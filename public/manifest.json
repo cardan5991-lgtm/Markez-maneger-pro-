@@ -1,0 +1,56 @@
+{
+  "id": "markez-manager-pro-v1",
+  "name": "Markez Manager Pro",
+  "short_name": "Markez Pro",
+  "description": "Administración para Tapicería Markez",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#121212",
+  "theme_color": "#8B4513",
+  "orientation": "portrait",
+  "scope": "/",
+  "categories": ["business", "productivity"],
+  "prefer_related_applications": false,
+  "screenshots": [
+    {
+      "src": "https://picsum.photos/seed/markez1/1080/1920",
+      "sizes": "1080x1920",
+      "type": "image/jpeg",
+      "form_factor": "narrow",
+      "label": "Panel de Control"
+    },
+    {
+      "src": "https://picsum.photos/seed/markez2/1920/1080",
+      "sizes": "1920x1080",
+      "type": "image/jpeg",
+      "form_factor": "wide",
+      "label": "Vista de Escritorio"
+    }
+  ],
+  "icons": [
+    {
+      "src": "https://placehold.co/192x192/8B4513/white/png?text=M",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "https://placehold.co/512x512/8B4513/white/png?text=M",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "https://placehold.co/192x192/8B4513/white/png?text=M",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "https://placehold.co/512x512/8B4513/white/png?text=M",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
