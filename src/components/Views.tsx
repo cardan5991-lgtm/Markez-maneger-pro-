@@ -83,6 +83,18 @@ const formatCurrency = (amount: number) => {
   }).format(amount);
 };
 
+const safeFormatDate = (dateString: string, formatStr: string, options?: any) => {
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) {
+      return 'Fecha inválida';
+    }
+    return format(date, formatStr, options);
+  } catch (e) {
+    return 'Fecha inválida';
+  }
+};
+
 const StatCard = React.memo(({ title, value, icon: Icon, trend, type = 'neutral', onClick }: any) => (
   <motion.button 
     whileHover={{ y: -4, scale: 1.02 }}
@@ -353,7 +365,7 @@ export const DashboardView = React.memo(({
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-medium truncate">{order.customer_name}</p>
-                  <p className="text-xs text-gray-500">{order.work_type} • {format(new Date(order.delivery_date), 'dd MMM', { locale: es })}</p>
+                  <p className="text-xs text-gray-500">{order.work_type} • {safeFormatDate(order.delivery_date, 'dd MMM', { locale: es })}</p>
                 </div>
                 <ChevronRight size={16} className="text-gray-600 group-hover:text-primary transition-colors" />
               </div>
@@ -480,7 +492,7 @@ export const OrdersView = React.memo(({
               </div>
               <div className="p-3 bg-white/5 rounded-xl">
                 <p className="text-[10px] text-gray-500 uppercase font-bold mb-1">Entrega</p>
-                <p className="text-sm font-medium">{format(new Date(order.delivery_date), 'dd/MM/yyyy')}</p>
+                <p className="text-sm font-medium">{safeFormatDate(order.delivery_date, 'dd/MM/yyyy')}</p>
               </div>
             </div>
 
@@ -554,7 +566,7 @@ export const FinancesView = React.memo(({
                     </div>
                     <div>
                       <p className="font-medium">{t.concept}</p>
-                      <p className="text-xs text-gray-500">{t.category} • {format(new Date(t.date), 'dd MMM, HH:mm', { locale: es })}</p>
+                      <p className="text-xs text-gray-500">{t.category} • {safeFormatDate(t.date, 'dd MMM, HH:mm', { locale: es })}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
@@ -641,6 +653,7 @@ export const SettingsView = React.memo(({
   showConfirmation, 
   forceUpdateApp, 
   limits, 
+  setLimits,
   handleExportData, 
   isDarkMode, 
   setIsDarkMode, 
@@ -870,13 +883,16 @@ export const SettingsView = React.memo(({
                 value={limit.limit_val || 0}
                 onChange={async (e) => {
                   const newVal = Number(e.target.value);
+                  const newLimits = [...limits];
+                  newLimits[idx].limit_val = newVal;
+                  setLimits(newLimits);
+                  
                   try {
                     await safeFetch('/api/limits', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ work_type: limit.work_type, limit_val: newVal })
                     });
-                    fetchData();
                   } catch (err) { /* Handled */ }
                 }}
               />

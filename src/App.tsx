@@ -24,13 +24,15 @@ import {
   Lock,
   Check,
   Sparkles,
-  Loader2
+  Loader2,
+  Calendar
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI } from '@google/genai';
 import { format, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { cn } from './lib/utils';
+import { jsPDF } from 'jspdf';
 import { 
   DashboardView, 
   OrdersView, 
@@ -75,10 +77,23 @@ interface Profile {
   use_whatsapp_business: boolean;
 }
 
+const safeFormatDate = (dateString: string, formatStr: string, options?: any) => {
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) {
+      return 'Fecha inválida';
+    }
+    return format(date, formatStr, options);
+  } catch (e) {
+    return 'Fecha inválida';
+  }
+};
+
 // --- Main App ---
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isFabOpen, setIsFabOpen] = useState(false);
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
   const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
   const [isPostCreatorOpen, setIsPostCreatorOpen] = useState(false);
@@ -89,7 +104,7 @@ export default function App() {
     address: '',
     phone: '',
     logo_url: '',
-    whatsapp_template: '',
+    whatsapp_template: 'Estimado/a {cliente}, le saludamos de {empresa}. Su pedido de {trabajo} estará listo el {entrega}. Total: ${total} | Restante: ${restante}. Agradecemos su confianza y preferencia.',
     use_whatsapp_business: false
   });
   const [limits, setLimits] = useState<any[]>([]);
@@ -303,6 +318,185 @@ export default function App() {
   }, [transactions]);
 
   // --- Handlers ---
+  const handleDownloadAndSharePDF = async (order: Order) => {
+    try {
+      const doc = new jsPDF();
+      
+      // Colors
+      const primaryColor = [220, 38, 38]; // Red
+      const darkColor = [26, 26, 26];
+      const grayColor = [100, 100, 100];
+      const lightGray = [240, 240, 240];
+
+      // Header Background
+      doc.setFillColor(darkColor[0], darkColor[1], darkColor[2]);
+      doc.rect(0, 0, 210, 40, 'F');
+
+      // Add logo if exists
+      if (profile.logo_url) {
+        try {
+          // Add watermark logo in the center
+          doc.setGState(new (doc as any).GState({ opacity: 0.1 }));
+          doc.addImage(profile.logo_url, 30, 73.5, 150, 150);
+          doc.setGState(new (doc as any).GState({ opacity: 1.0 }));
+
+          // Add top-left logo
+          // jsPDF can infer the format from the data URL
+          doc.addImage(profile.logo_url, 15, 5, 30, 30);
+        } catch (e) {
+          console.error("Could not add logo to PDF", e);
+        }
+      }
+
+      // Business Info (Header)
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(24);
+      doc.setTextColor(255, 255, 255);
+      doc.text(profile.business_name || 'Tapicería', profile.logo_url ? 55 : 15, 20);
+      
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(200, 200, 200);
+      doc.text(profile.address || '', profile.logo_url ? 55 : 15, 28);
+      doc.text(`Tel: ${profile.phone || ''}`, profile.logo_url ? 55 : 15, 34);
+
+      // Receipt Info
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(12);
+      doc.setTextColor(200, 200, 200);
+      doc.text(`Folio: #${order.id.toString().padStart(6, '0')}`, 195, 28, { align: 'right' });
+      doc.text(`Fecha: ${format(new Date(), 'dd/MM/yyyy')}`, 195, 34, { align: 'right' });
+
+      // Customer Info Section
+      doc.setFillColor(0, 0, 0);
+      doc.rect(15, 50, 180, 10, 'F');
+      
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(255, 255, 255);
+      doc.text('DATOS DEL CLIENTE', 20, 57);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(11);
+      doc.setTextColor(grayColor[0], grayColor[1], grayColor[2]);
+      doc.text(`Nombre:`, 20, 70);
+      doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
+      doc.text(order.customer_name, 45, 70);
+
+      doc.setTextColor(grayColor[0], grayColor[1], grayColor[2]);
+      doc.text(`Teléfono:`, 20, 78);
+      doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
+      doc.text(order.phone, 45, 78);
+
+      doc.setTextColor(grayColor[0], grayColor[1], grayColor[2]);
+      doc.text(`Dirección:`, 20, 86);
+      doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
+      doc.text(order.address || 'No especificada', 45, 86);
+
+      // Order Details Section
+      doc.setFillColor(0, 0, 0);
+      doc.rect(15, 100, 180, 10, 'F');
+      
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(255, 255, 255);
+      doc.text('DETALLES DEL TRABAJO', 20, 107);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(11);
+      doc.setTextColor(grayColor[0], grayColor[1], grayColor[2]);
+      doc.text(`Trabajo:`, 20, 120);
+      doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
+      doc.text(order.work_type, 60, 120);
+
+      doc.setTextColor(grayColor[0], grayColor[1], grayColor[2]);
+      doc.text(`Material:`, 20, 128);
+      doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
+      doc.text(order.material, 60, 128);
+
+      doc.setTextColor(grayColor[0], grayColor[1], grayColor[2]);
+      doc.text(`Fecha de Entrega:`, 20, 136);
+      doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
+      doc.text(safeFormatDate(order.delivery_date, 'dd/MM/yyyy'), 60, 136);
+
+      // Financials Section
+      doc.setFillColor(0, 0, 0);
+      doc.rect(15, 150, 180, 10, 'F');
+      
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(255, 255, 255);
+      doc.text('RESUMEN ECONÓMICO', 20, 157);
+      
+      const formatCurrency = (amount: number) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(amount);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(12);
+      doc.setTextColor(grayColor[0], grayColor[1], grayColor[2]);
+      doc.text(`Total:`, 130, 175);
+      doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
+      doc.text(formatCurrency(order.total), 185, 175, { align: 'right' });
+      
+      doc.setTextColor(grayColor[0], grayColor[1], grayColor[2]);
+      doc.text(`Anticipo/Abonos:`, 130, 185);
+      doc.setTextColor(34, 197, 94); // Emerald 500
+      doc.text(formatCurrency(order.advance), 185, 185, { align: 'right' });
+      
+      doc.setDrawColor(200, 200, 200);
+      doc.line(130, 190, 185, 190);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(14);
+      doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
+      doc.text(`Restante:`, 130, 200);
+      doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+      doc.text(formatCurrency(order.total - order.advance), 185, 200, { align: 'right' });
+
+      // Footer
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(10);
+      doc.setTextColor(150, 150, 150);
+      doc.text('¡Gracias por su preferencia!', 105, 270, { align: 'center' });
+      doc.text('Este documento es un comprobante de su pedido.', 105, 275, { align: 'center' });
+
+      // Save the PDF
+      const fileName = `Nota_Remision_${order.customer_name.replace(/\s+/g, '_')}.pdf`;
+      doc.save(fileName);
+
+      // Share via Web Share API if available
+      try {
+        const pdfBlob = doc.output('blob');
+        const file = new File([pdfBlob], fileName, { type: 'application/pdf' });
+        
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            files: [file],
+            title: 'Nota de Remisión',
+            text: `Estimado/a ${order.customer_name}, le compartimos su nota de remisión.`,
+          });
+        } else {
+          // Fallback: open WhatsApp with text
+          const text = `Estimado/a ${order.customer_name}, es un placer saludarle. Le informamos que su nota de remisión por el trabajo de ${order.work_type} ha sido generada. Enseguida le enviaremos el documento PDF. Agradecemos su preferencia.`;
+          const url = profile.use_whatsapp_business 
+            ? `https://wa.me/52${order.phone}?text=${encodeURIComponent(text)}`
+            : `https://api.whatsapp.com/send?phone=52${order.phone}&text=${encodeURIComponent(text)}`;
+          window.open(url, '_blank');
+        }
+      } catch (shareError) {
+        console.error("Error sharing:", shareError);
+        // Fallback to just opening WhatsApp if sharing fails
+        const text = `Estimado/a ${order.customer_name}, es un placer saludarle. Le informamos que su nota de remisión por el trabajo de ${order.work_type} ha sido generada. Enseguida le enviaremos el documento PDF. Agradecemos su preferencia.`;
+        const url = profile.use_whatsapp_business 
+          ? `https://wa.me/52${order.phone}?text=${encodeURIComponent(text)}`
+          : `https://api.whatsapp.com/send?phone=52${order.phone}&text=${encodeURIComponent(text)}`;
+        window.open(url, '_blank');
+      }
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+      alert("Hubo un error al generar el PDF.");
+    }
+  };
+
   const handleCreateOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     const formData = new FormData(e.target as HTMLFormElement);
@@ -636,25 +830,7 @@ export default function App() {
             </div>
 
             <div className="flex items-center gap-2 md:gap-4">
-              <button 
-                onClick={handleLogout}
-                className="md:hidden p-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-400 hover:text-rose-500 transition-all relative"
-              >
-                <LogOut size={20} />
-              </button>
-              <button 
-                onClick={() => setIsOrderModalOpen(true)}
-                className="btn-primary flex items-center gap-2 px-4 py-2.5 text-sm"
-              >
-                <Plus size={18} />
-                <span className="hidden sm:inline">Nuevo Pedido</span>
-              </button>
-              <button 
-                onClick={() => setIsTransactionModalOpen(true)}
-                className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white transition-all relative"
-              >
-                <Wallet size={20} />
-              </button>
+              {/* Buttons moved to FAB */}
             </div>
           </div>
         </header>
@@ -727,6 +903,7 @@ export default function App() {
                     safeFetch={safeFetch}
                     setPasswordPrompt={setPasswordPrompt}
                     limits={limits}
+                    setLimits={setLimits}
                     fetchData={fetchData}
                     showConfirmation={showConfirmation}
                     forceUpdateApp={forceUpdateApp}
@@ -742,6 +919,69 @@ export default function App() {
           </AnimatePresence>
         </div>
       </main>
+
+      {/* Floating Action Button (FAB) */}
+      <div className="fixed bottom-20 md:bottom-8 right-4 md:right-8 z-50 flex flex-col items-end gap-3">
+        <AnimatePresence>
+          {isFabOpen && (
+            <motion.div
+              initial={{ opacity: 0, y: 20, scale: 0.8 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 20, scale: 0.8 }}
+              className="flex flex-col gap-3 items-end"
+            >
+              <button
+                onClick={() => {
+                  setIsFabOpen(false);
+                  setIsOrderModalOpen(true);
+                }}
+                className="flex items-center gap-3 bg-[#1A1A1A] border border-white/10 hover:bg-white/10 text-white px-4 py-3 rounded-2xl shadow-xl transition-all"
+              >
+                <span className="font-bold text-sm">Nuevo Pedido</span>
+                <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
+                  <Plus size={18} className="text-white" />
+                </div>
+              </button>
+              
+              <button
+                onClick={() => {
+                  setIsFabOpen(false);
+                  setIsTransactionModalOpen(true);
+                }}
+                className="flex items-center gap-3 bg-[#1A1A1A] border border-white/10 hover:bg-white/10 text-white px-4 py-3 rounded-2xl shadow-xl transition-all"
+              >
+                <span className="font-bold text-sm">Nueva Transacción</span>
+                <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center">
+                  <Wallet size={18} className="text-white" />
+                </div>
+              </button>
+
+              <button
+                onClick={() => {
+                  setIsFabOpen(false);
+                  handleLogout();
+                }}
+                className="md:hidden flex items-center gap-3 bg-[#1A1A1A] border border-white/10 hover:bg-white/10 text-white px-4 py-3 rounded-2xl shadow-xl transition-all"
+              >
+                <span className="font-bold text-sm">Cerrar Sesión</span>
+                <div className="w-8 h-8 rounded-full bg-rose-500 flex items-center justify-center">
+                  <LogOut size={18} className="text-white" />
+                </div>
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <button
+          onClick={() => setIsFabOpen(!isFabOpen)}
+          className={cn(
+            "w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300",
+            isFabOpen ? "bg-white/10 rotate-45" : "bg-primary hover:scale-105"
+          )}
+        >
+          <Plus size={24} className="text-white" />
+        </button>
+      </div>
 
       {/* Modals */}
       <AnimatePresence>
@@ -889,15 +1129,11 @@ export default function App() {
             >
               <div className="p-6 border-b border-white/10 flex justify-between items-center bg-gradient-to-r from-primary/10 to-transparent">
                 <div className="flex items-center gap-4">
-                  <div className={cn(
-                    "w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg",
-                    selectedOrderDetails.status === 'completed' ? "bg-emerald-500 text-white" : "bg-primary text-white"
-                  )}>
-                    {selectedOrderDetails.status === 'completed' ? <CheckCircle2 size={24} /> : <Clock size={24} />}
+                  <div className="w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg bg-primary/20 text-primary">
+                    <ClipboardList size={24} />
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold">{selectedOrderDetails.customer_name}</h3>
-                    <p className="text-xs text-gray-500 uppercase tracking-widest font-black">Pedido #{selectedOrderDetails.id}</p>
+                    <h3 className="text-xl font-bold">Resumen del Pedido</h3>
                   </div>
                 </div>
                 <button onClick={() => setSelectedOrderDetails(null)} className="p-2 rounded-full hover:bg-white/10 transition-colors">
@@ -917,7 +1153,7 @@ export default function App() {
                   </div>
                   <div className="p-4 rounded-2xl bg-white/5 border border-white/5">
                     <p className="text-[10px] text-gray-500 uppercase font-black mb-1">Entrega</p>
-                    <p className="font-bold">{format(new Date(selectedOrderDetails.delivery_date), 'dd/MM/yyyy')}</p>
+                    <p className="font-bold">{safeFormatDate(selectedOrderDetails.delivery_date, 'dd/MM/yyyy')}</p>
                   </div>
                 </div>
 
@@ -925,87 +1161,110 @@ export default function App() {
                   <div className="space-y-4">
                     <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest">Contacto y Ubicación</h4>
                     <div className="space-y-3">
+                      <div className="flex items-center gap-3 p-3 rounded-xl bg-white/5">
+                        <ClipboardList size={18} className="text-gray-500" />
+                        <span className="font-bold">{selectedOrderDetails.customer_name}</span>
+                      </div>
                       <a href={`tel:${selectedOrderDetails.phone}`} className="flex items-center gap-3 p-3 rounded-xl bg-white/5 hover:bg-primary/10 hover:text-primary transition-all group">
                         <Smartphone size={18} className="text-gray-500 group-hover:text-primary" />
                         <span className="font-bold">{selectedOrderDetails.phone}</span>
                       </a>
                       <div className="flex items-start gap-3 p-3 rounded-xl bg-white/5">
-                        <ClipboardList size={18} className="text-gray-500 mt-0.5" />
+                        <LayoutDashboard size={18} className="text-gray-500 mt-0.5" />
                         <span className="text-sm text-gray-300">{selectedOrderDetails.address || 'Sin dirección registrada'}</span>
                       </div>
                     </div>
                   </div>
 
-                  <div className="space-y-4">
-                    <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest">Resumen Económico</h4>
-                    <div className="card bg-black/30 border-white/5 space-y-3">
-                      <div className="flex justify-between items-center text-sm">
-                        <span className="text-gray-400">Total:</span>
-                        <span className="font-mono font-bold">{new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(selectedOrderDetails.total)}</span>
-                      </div>
-                      <div className="flex justify-between items-center text-sm">
-                        <span className="text-emerald-500">Anticipo:</span>
-                        <span className="font-mono font-bold text-emerald-500">{new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(selectedOrderDetails.advance)}</span>
-                      </div>
-                      <div className="pt-3 border-t border-white/10 flex justify-between items-center">
-                        <span className="font-bold">Restante:</span>
-                        <span className="font-mono font-black text-xl text-primary">
-                          {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(selectedOrderDetails.total - selectedOrderDetails.advance)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
                 </div>
+                <div className="space-y-4 pt-4 border-t border-white/5">
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-400">Anticipo pagado</span>
+                    <span className="font-mono font-bold text-emerald-500">{new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(selectedOrderDetails.advance)}</span>
+                  </div>
+                  <div className="flex justify-between items-center pb-4 border-b border-white/5">
+                    <span className="text-white font-bold text-lg">Saldo Restante</span>
+                    <span className="font-mono font-black text-2xl text-primary">
+                      {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(selectedOrderDetails.total - selectedOrderDetails.advance)}
+                    </span>
+                  </div>
 
-                <div className="flex flex-col sm:flex-row gap-3 pt-4">
-                  {selectedOrderDetails.status === 'pending' && (
-                    <>
-                      <button 
-                        onClick={() => handleCompleteOrder(selectedOrderDetails.id)}
-                        className="flex-1 btn-primary py-4 flex items-center justify-center gap-2"
-                      >
-                        <CheckCircle2 size={20} />
-                        Liquidar y Finalizar
-                      </button>
-                      <button 
-                        onClick={() => setPaymentModal({ isOpen: true, orderId: selectedOrderDetails.id, amount: '' })}
-                        className="flex-1 py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-500/20"
-                      >
-                        <Wallet size={20} />
-                        Registrar Abono
-                      </button>
-                    </>
-                  )}
-                  <button 
-                    onClick={() => {
-                      const text = profile.whatsapp_template
-                        .replace('{empresa}', profile.business_name)
-                        .replace('{cliente}', selectedOrderDetails.customer_name)
-                        .replace('{trabajo}', selectedOrderDetails.work_type)
-                        .replace('{material}', selectedOrderDetails.material)
-                        .replace('{entrega}', format(new Date(selectedOrderDetails.delivery_date), 'dd/MM/yyyy'))
-                        .replace('{total}', selectedOrderDetails.total.toString())
-                        .replace('{anticipo}', selectedOrderDetails.advance.toString())
-                        .replace('{restante}', (selectedOrderDetails.total - selectedOrderDetails.advance).toString());
-                      
-                      const url = `https://wa.me/52${selectedOrderDetails.phone}?text=${encodeURIComponent(text)}`;
-                      window.open(url, '_blank');
-                    }}
-                    className="p-4 rounded-2xl bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-white transition-all"
-                    title="Enviar WhatsApp"
-                  >
-                    <MessageCircle size={24} />
-                  </button>
-                  <button 
-                    onClick={() => {
-                      setOrderToDelete(selectedOrderDetails.id);
-                      setPasswordPrompt({ isOpen: true, action: 'delete_order', passwordInput: '', newPasswordInput: '' });
-                    }}
-                    className="p-4 rounded-2xl bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white transition-all"
-                    title="Eliminar Pedido"
-                  >
-                    <Trash2 size={24} />
-                  </button>
+                  <div className="flex flex-col gap-3 pt-2">
+                    <button 
+                      onClick={() => handleDownloadAndSharePDF(selectedOrderDetails)}
+                      className="py-4 flex items-center justify-center gap-3 text-white font-bold hover:bg-white/5 rounded-2xl transition-colors"
+                    >
+                      <Download size={20} />
+                      Descargar Nota de Remisión (PDF)
+                    </button>
+
+                    <button className="py-4 bg-[#2A1115] text-primary rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-[#3A181D] transition-colors">
+                      <Calendar size={20} />
+                      Sincronizar con Calendario
+                    </button>
+
+                    <button 
+                      onClick={() => window.open(`tel:${selectedOrderDetails.phone}`)}
+                      className="py-4 bg-[#1A1A1A] text-white rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-[#252525] transition-colors"
+                    >
+                      <Smartphone size={20} className="text-primary" />
+                      Llamar Cliente
+                    </button>
+
+                    <button 
+                      onClick={() => {
+                        const text = profile.whatsapp_template
+                          .replace('{empresa}', profile.business_name)
+                          .replace('{cliente}', selectedOrderDetails.customer_name)
+                          .replace('{trabajo}', selectedOrderDetails.work_type)
+                          .replace('{material}', selectedOrderDetails.material)
+                          .replace('{entrega}', safeFormatDate(selectedOrderDetails.delivery_date, 'dd/MM/yyyy'))
+                          .replace('{total}', selectedOrderDetails.total.toString())
+                          .replace('{anticipo}', selectedOrderDetails.advance.toString())
+                          .replace('{restante}', (selectedOrderDetails.total - selectedOrderDetails.advance).toString());
+                        
+                        const url = profile.use_whatsapp_business 
+                          ? `https://wa.me/52${selectedOrderDetails.phone}?text=${encodeURIComponent(text)}`
+                          : `https://api.whatsapp.com/send?phone=52${selectedOrderDetails.phone}&text=${encodeURIComponent(text)}`;
+                        window.open(url, '_blank');
+                      }}
+                      className="py-4 bg-[#00D084] text-white rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-[#00B874] transition-colors"
+                    >
+                      <MessageCircle size={20} />
+                      Mandar mensaje al cliente
+                    </button>
+
+                    {selectedOrderDetails.status === 'pending' && (
+                      <>
+                        <button 
+                          onClick={() => setPaymentModal({ isOpen: true, orderId: selectedOrderDetails.id, amount: '' })}
+                          className="py-4 bg-[#6366F1] text-white rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-[#5254D8] transition-colors"
+                        >
+                          <Wallet size={20} />
+                          Dar Abono
+                        </button>
+
+                        <button 
+                          onClick={() => handleCompleteOrder(selectedOrderDetails.id)}
+                          className="py-4 bg-primary text-white rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
+                        >
+                          <CheckCircle2 size={20} />
+                          Finalizar Pedido
+                        </button>
+                      </>
+                    )}
+
+                    <button 
+                      onClick={() => {
+                        setOrderToDelete(selectedOrderDetails.id);
+                        setPasswordPrompt({ isOpen: true, action: 'delete_order', passwordInput: '', newPasswordInput: '' });
+                      }}
+                      className="py-4 bg-[#2A1115] text-primary rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-[#3A181D] transition-colors"
+                    >
+                      <Trash2 size={20} />
+                      Cancelar Pedido
+                    </button>
+                  </div>
                 </div>
               </div>
             </motion.div>
