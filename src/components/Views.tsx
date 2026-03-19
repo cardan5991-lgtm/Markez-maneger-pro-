@@ -354,7 +354,7 @@ export const DashboardView = React.memo(({
             <button onClick={() => handleTabChange('orders')} className="text-primary text-xs font-bold uppercase tracking-wider hover:underline">Ver todos</button>
           </div>
           <div className="space-y-4">
-            {orders.filter((o: any) => o.status === 'pending').slice(0, 5).map((order: any, idx: number) => (
+            {orders.filter((o: any) => o.status === 'pending' && !o.is_quote).slice(0, 5).map((order: any, idx: number) => (
               <div 
                 key={`pending-${order.id}-${idx}`} 
                 onClick={() => setSelectedOrderDetails(order)}
@@ -382,8 +382,8 @@ DashboardView.displayName = 'DashboardView';
 export const OrdersView = React.memo(({ 
   searchTerm, 
   setSearchTerm, 
-  showCompletedOrders, 
-  setShowCompletedOrders, 
+  orderFilter, 
+  setOrderFilter, 
   filteredOrders, 
   setIsOrderModalOpen,
   setSelectedOrderDetails
@@ -414,19 +414,27 @@ export const OrdersView = React.memo(({
             </button>
           )}
         </div>
-        <div className="flex gap-2">
+        <div className="flex bg-black/20 p-1 rounded-xl w-fit">
           <button 
-            onClick={() => setShowCompletedOrders(!showCompletedOrders)}
-            className={cn(
-              "px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2",
-              showCompletedOrders 
-                ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/20" 
-                : "bg-white/5 text-gray-400 hover:text-white"
-            )}
+            onClick={() => setOrderFilter('pending')}
+            className={cn("px-4 py-2 rounded-lg text-sm font-bold transition-all", orderFilter === 'pending' ? "bg-white shadow-sm text-black" : "text-gray-400 hover:text-white")}
           >
-            <CheckCircle2 size={18} />
-            {showCompletedOrders ? "Ver Pendientes" : "Ver Historial"}
+            Pendientes
           </button>
+          <button 
+            onClick={() => setOrderFilter('completed')}
+            className={cn("px-4 py-2 rounded-lg text-sm font-bold transition-all", orderFilter === 'completed' ? "bg-white shadow-sm text-black" : "text-gray-400 hover:text-white")}
+          >
+            Completados
+          </button>
+          <button 
+            onClick={() => setOrderFilter('quotes')}
+            className={cn("px-4 py-2 rounded-lg text-sm font-bold transition-all", orderFilter === 'quotes' ? "bg-white shadow-sm text-black" : "text-gray-400 hover:text-white")}
+          >
+            Presupuestos
+          </button>
+        </div>
+        <div className="flex gap-2">
           <button className="bg-white/5 p-2 rounded-lg text-gray-400 hover:text-white transition-colors">
             <Filter size={20} />
           </button>
@@ -437,9 +445,9 @@ export const OrdersView = React.memo(({
         {filteredOrders.length === 0 && (
           <div className="col-span-full py-20 text-center card bg-white/5 border-dashed border-white/10">
             <ClipboardList className="mx-auto text-gray-600 mb-4 opacity-20" size={64} />
-            <p className="text-gray-400 font-medium text-lg">No hay pedidos {showCompletedOrders ? 'en el historial' : 'pendientes'}</p>
+            <p className="text-gray-400 font-medium text-lg">No hay {orderFilter === 'quotes' ? 'presupuestos' : 'pedidos'} {orderFilter === 'completed' ? 'en el historial' : 'pendientes'}</p>
             {searchTerm && <p className="text-gray-500 text-sm mt-1">No se encontraron resultados para "{searchTerm}"</p>}
-            {!showCompletedOrders && !searchTerm ? (
+            {orderFilter === 'pending' && !searchTerm ? (
               <div className="flex flex-col gap-2 mt-4">
                 <button 
                   onClick={() => setIsOrderModalOpen(true)}
@@ -450,7 +458,7 @@ export const OrdersView = React.memo(({
               </div>
             ) : (
               <button 
-                onClick={() => setShowCompletedOrders(false)}
+                onClick={() => setOrderFilter('pending')}
                 className="mt-4 text-gray-500 text-sm hover:text-white transition-colors"
               >
                 Volver a pedidos pendientes
@@ -481,7 +489,7 @@ export const OrdersView = React.memo(({
               </div>
               <div className="text-right">
                 <p className="font-mono font-black text-lg">{formatCurrency(order.total)}</p>
-                <p className="text-[10px] text-gray-500 uppercase font-bold">Total del Trabajo</p>
+                <p className="text-[10px] text-gray-500 uppercase font-bold">{order.is_quote ? 'Total Cotizado' : 'Total del Trabajo'}</p>
               </div>
             </div>
 
@@ -498,8 +506,18 @@ export const OrdersView = React.memo(({
 
             <div className="flex items-center justify-between pt-4 border-t border-white/5">
               <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                <span className="text-xs font-bold text-emerald-500">Anticipo: {formatCurrency(order.advance)}</span>
+                {!order.is_quote && (
+                  <>
+                    <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                    <span className="text-xs font-bold text-emerald-500">Anticipo: {formatCurrency(order.advance)}</span>
+                  </>
+                )}
+                {order.is_quote && (
+                  <>
+                    <div className="w-2 h-2 rounded-full bg-blue-500" />
+                    <span className="text-xs font-bold text-blue-500">Cotización</span>
+                  </>
+                )}
               </div>
               <ChevronRight size={18} className="text-gray-600 group-hover:text-primary group-hover:translate-x-1 transition-all" />
             </div>
@@ -514,6 +532,8 @@ OrdersView.displayName = 'OrdersView';
 
 export const FinancesView = React.memo(({ 
   getMonthlyData, 
+  getWeeklyData,
+  currentWeekStats,
   transactions, 
   formatCurrency, 
   setTransactionToDelete, 
@@ -530,6 +550,50 @@ export const FinancesView = React.memo(({
     >
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">
+          
+          {/* Weekly Summary Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="card bg-gradient-to-br from-emerald-500/10 to-transparent border-emerald-500/20">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="p-2 rounded-lg bg-emerald-500/20 text-emerald-500">
+                  <TrendingUp size={20} />
+                </div>
+                <h3 className="text-sm font-bold text-emerald-500 uppercase tracking-wider">Ingresos de esta semana</h3>
+              </div>
+              <p className="text-3xl font-black font-mono text-emerald-500">{formatCurrency(currentWeekStats?.income || 0)}</p>
+            </div>
+            <div className="card bg-gradient-to-br from-rose-500/10 to-transparent border-rose-500/20">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="p-2 rounded-lg bg-rose-500/20 text-rose-500">
+                  <TrendingDown size={20} />
+                </div>
+                <h3 className="text-sm font-bold text-rose-500 uppercase tracking-wider">Gastos de esta semana</h3>
+              </div>
+              <p className="text-3xl font-black font-mono text-rose-500">{formatCurrency(currentWeekStats?.expense || 0)}</p>
+            </div>
+          </div>
+
+          {/* Weekly Chart */}
+          <div className="card">
+            <h3 className="text-lg font-bold mb-6">Desglose de esta Semana</h3>
+            <div className="h-[250px] min-h-[250px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={getWeeklyData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
+                  <XAxis dataKey="name" stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} />
+                  <YAxis stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v.toLocaleString()}`} />
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: '#1E1E1E', border: 'none', borderRadius: '12px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
+                    itemStyle={{ color: '#fff' }}
+                  />
+                  <Bar dataKey="income" name="Ingresos" fill="#10b981" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="expense" name="Gastos" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Monthly Chart */}
           <div className="card">
             <h3 className="text-lg font-bold mb-6">Desglose Mensual</h3>
             <div className="h-[250px] min-h-[250px] w-full">

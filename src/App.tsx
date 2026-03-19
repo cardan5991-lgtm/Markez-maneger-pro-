@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI } from '@google/genai';
-import { format, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
+import { format, startOfMonth, endOfMonth, isWithinInterval, subMonths, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { cn } from './lib/utils';
 import { jsPDF } from 'jspdf';
@@ -56,6 +56,7 @@ interface Order {
   total: number;
   advance: number;
   status: 'pending' | 'completed' | 'cancelled';
+  is_quote?: boolean;
 }
 
 interface Transaction {
@@ -112,7 +113,9 @@ export default function App() {
   const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
   const [insights, setInsights] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [showCompletedOrders, setShowCompletedOrders] = useState(false);
+  const [orderFilter, setOrderFilter] = useState<'pending' | 'completed' | 'quotes'>('pending');
+  const [orderModalType, setOrderModalType] = useState<'order' | 'quote'>('order');
+  const [quoteToConvert, setQuoteToConvert] = useState<Order | null>(null);
   const [selectedOrderDetails, setSelectedOrderDetails] = useState<Order | null>(null);
   const [transactionToDelete, setTransactionToDelete] = useState<number | null>(null);
   const [isImporting, setIsImporting] = useState(false);
@@ -266,13 +269,20 @@ export default function App() {
     return orders.filter(o => {
       const matchesSearch = o.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                             o.phone.includes(searchTerm);
-      const matchesStatus = showCompletedOrders ? o.status === 'completed' : o.status === 'pending';
+      let matchesStatus = false;
+      if (orderFilter === 'quotes') {
+        matchesStatus = !!o.is_quote;
+      } else if (orderFilter === 'completed') {
+        matchesStatus = !o.is_quote && o.status === 'completed';
+      } else {
+        matchesStatus = !o.is_quote && o.status === 'pending';
+      }
       return matchesSearch && matchesStatus;
     });
-  }, [orders, searchTerm, showCompletedOrders]);
+  }, [orders, searchTerm, orderFilter]);
 
   const capacityWarnings = useMemo(() => {
-    const pendingByWork = orders.filter(o => o.status === 'pending').reduce((acc: any, o) => {
+    const pendingByWork = orders.filter(o => o.status === 'pending' && !o.is_quote).reduce((acc: any, o) => {
       acc[o.work_type] = (acc[o.work_type] || 0) + 1;
       return acc;
     }, {});
@@ -309,6 +319,37 @@ export default function App() {
     return months;
   }, [transactions]);
 
+  const getWeeklyData = useMemo(() => {
+    const start = startOfWeek(new Date(), { weekStartsOn: 1 }); // Monday
+    const end = endOfWeek(new Date(), { weekStartsOn: 1 }); // Sunday
+    
+    const days = eachDayOfInterval({ start, end }).map(date => ({
+      date,
+      name: format(date, 'EEEE', { locale: es }).substring(0, 3).toUpperCase(),
+      income: 0,
+      expense: 0
+    }));
+
+    transactions.forEach(t => {
+      const tDate = new Date(t.date);
+      const dayData = days.find(d => isSameDay(d.date, tDate));
+      if (dayData) {
+        if (t.type === 'income') dayData.income += Number(t.amount);
+        else dayData.expense += Number(t.amount);
+      }
+    });
+
+    return days;
+  }, [transactions]);
+
+  const currentWeekStats = useMemo(() => {
+    return getWeeklyData.reduce((acc, day) => {
+      acc.income += day.income;
+      acc.expense += day.expense;
+      return acc;
+    }, { income: 0, expense: 0 });
+  }, [getWeeklyData]);
+
   const getCategoryData = useMemo(() => {
     const cats: any = {};
     transactions.filter(t => t.type === 'expense').forEach(t => {
@@ -320,6 +361,7 @@ export default function App() {
   // --- Handlers ---
   const handleDownloadAndSharePDF = async (order: Order) => {
     try {
+      const isQuote = order.is_quote;
       const doc = new jsPDF();
       
       // Colors
@@ -426,7 +468,7 @@ export default function App() {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
       doc.setTextColor(255, 255, 255);
-      doc.text('RESUMEN ECONÓMICO', 20, 157);
+      doc.text(isQuote ? 'COTIZACIÓN' : 'RESUMEN ECONÓMICO', 20, 157);
       
       const formatCurrency = (amount: number) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(amount);
 
@@ -437,30 +479,32 @@ export default function App() {
       doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
       doc.text(formatCurrency(order.total), 185, 175, { align: 'right' });
       
-      doc.setTextColor(grayColor[0], grayColor[1], grayColor[2]);
-      doc.text(`Anticipo/Abonos:`, 130, 185);
-      doc.setTextColor(34, 197, 94); // Emerald 500
-      doc.text(formatCurrency(order.advance), 185, 185, { align: 'right' });
-      
-      doc.setDrawColor(200, 200, 200);
-      doc.line(130, 190, 185, 190);
+      if (!isQuote) {
+        doc.setTextColor(grayColor[0], grayColor[1], grayColor[2]);
+        doc.text(`Anticipo/Abonos:`, 130, 185);
+        doc.setTextColor(34, 197, 94); // Emerald 500
+        doc.text(formatCurrency(order.advance), 185, 185, { align: 'right' });
+        
+        doc.setDrawColor(200, 200, 200);
+        doc.line(130, 190, 185, 190);
+      }
 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(14);
       doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
-      doc.text(`Restante:`, 130, 200);
+      doc.text(isQuote ? `Total Cotizado:` : `Restante:`, 130, 200);
       doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-      doc.text(formatCurrency(order.total - order.advance), 185, 200, { align: 'right' });
+      doc.text(formatCurrency(isQuote ? order.total : order.total - order.advance), 185, 200, { align: 'right' });
 
       // Footer
       doc.setFont('helvetica', 'italic');
       doc.setFontSize(10);
       doc.setTextColor(150, 150, 150);
       doc.text('¡Gracias por su preferencia!', 105, 270, { align: 'center' });
-      doc.text('Este documento es un comprobante de su pedido.', 105, 275, { align: 'center' });
+      doc.text(isQuote ? 'Esta cotización tiene una vigencia de 15 días.' : 'Este documento es un comprobante de su pedido.', 105, 275, { align: 'center' });
 
       // Save the PDF
-      const fileName = `Nota_Remision_${order.customer_name.replace(/\s+/g, '_')}.pdf`;
+      const fileName = `${isQuote ? 'Cotizacion' : 'Nota_Remision'}_${order.customer_name.replace(/\s+/g, '_')}.pdf`;
       doc.save(fileName);
 
       // Share via Web Share API if available
@@ -471,21 +515,29 @@ export default function App() {
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
           await navigator.share({
             files: [file],
-            title: 'Nota de Remisión',
-            text: `Estimado/a ${order.customer_name}, le compartimos su nota de remisión.`,
+            title: isQuote ? 'Cotización' : 'Nota de Remisión',
+            text: isQuote ? `Estimado/a ${order.customer_name}, le compartimos la cotización solicitada.` : `Estimado/a ${order.customer_name}, le compartimos su nota de remisión.`,
           });
         } else {
           // Fallback: open WhatsApp with text
-          const text = `Estimado/a ${order.customer_name}, es un placer saludarle. Le informamos que su nota de remisión por el trabajo de ${order.work_type} ha sido generada. Enseguida le enviaremos el documento PDF. Agradecemos su preferencia.`;
+          const text = isQuote 
+            ? `Estimado/a ${order.customer_name}, le compartimos la cotización solicitada por el trabajo de ${order.work_type}. Enseguida le enviaremos el documento PDF.`
+            : `Estimado/a ${order.customer_name}, es un placer saludarle. Le informamos que su nota de remisión por el trabajo de ${order.work_type} ha sido generada. Enseguida le enviaremos el documento PDF. Agradecemos su preferencia.`;
           const url = profile.use_whatsapp_business 
             ? `https://wa.me/52${order.phone}?text=${encodeURIComponent(text)}`
             : `https://api.whatsapp.com/send?phone=52${order.phone}&text=${encodeURIComponent(text)}`;
           window.open(url, '_blank');
         }
-      } catch (shareError) {
+      } catch (shareError: any) {
+        if (shareError.name === 'AbortError' || (shareError.message && shareError.message.includes('canceled'))) {
+          // User canceled the share, do nothing
+          return;
+        }
         console.error("Error sharing:", shareError);
         // Fallback to just opening WhatsApp if sharing fails
-        const text = `Estimado/a ${order.customer_name}, es un placer saludarle. Le informamos que su nota de remisión por el trabajo de ${order.work_type} ha sido generada. Enseguida le enviaremos el documento PDF. Agradecemos su preferencia.`;
+        const text = isQuote 
+          ? `Estimado/a ${order.customer_name}, le compartimos la cotización solicitada por el trabajo de ${order.work_type}. Enseguida le enviaremos el documento PDF.`
+          : `Estimado/a ${order.customer_name}, es un placer saludarle. Le informamos que su nota de remisión por el trabajo de ${order.work_type} ha sido generada. Enseguida le enviaremos el documento PDF. Agradecemos su preferencia.`;
         const url = profile.use_whatsapp_business 
           ? `https://wa.me/52${order.phone}?text=${encodeURIComponent(text)}`
           : `https://api.whatsapp.com/send?phone=52${order.phone}&text=${encodeURIComponent(text)}`;
@@ -493,7 +545,8 @@ export default function App() {
       }
     } catch (error) {
       console.error("Error generating PDF:", error);
-      alert("Hubo un error al generar el PDF.");
+      setToast({ message: "Hubo un error al generar el PDF.", type: 'error' });
+      setTimeout(() => setToast(null), 3000);
     }
   };
 
@@ -509,12 +562,20 @@ export default function App() {
         body: JSON.stringify({
           ...data,
           total: Number(data.total),
-          advance: Number(data.advance)
+          advance: Number(data.advance),
+          is_quote: orderModalType === 'quote'
         })
       });
+      
+      // If we were converting a quote, delete the original quote
+      if (quoteToConvert && orderModalType === 'order') {
+        await safeFetch(`/api/orders/${quoteToConvert.id}`, { method: 'DELETE' });
+      }
+
       setIsOrderModalOpen(false);
+      setQuoteToConvert(null);
       fetchData();
-      setToast({ message: 'Pedido creado con éxito', type: 'success' });
+      setToast({ message: orderModalType === 'quote' ? 'Cotización creada con éxito' : 'Pedido creado con éxito', type: 'success' });
       setTimeout(() => setToast(null), 3000);
     } catch (err) { /* Handled */ }
   };
@@ -867,8 +928,8 @@ export default function App() {
                   <OrdersView 
                     searchTerm={searchTerm}
                     setSearchTerm={setSearchTerm}
-                    showCompletedOrders={showCompletedOrders}
-                    setShowCompletedOrders={setShowCompletedOrders}
+                    orderFilter={orderFilter}
+                    setOrderFilter={setOrderFilter}
                     filteredOrders={filteredOrders}
                     setIsOrderModalOpen={setIsOrderModalOpen}
                     setSelectedOrderDetails={setSelectedOrderDetails}
@@ -877,15 +938,26 @@ export default function App() {
                 {activeTab === 'finances' && (
                   <FinancesView 
                     getMonthlyData={getMonthlyData}
+                    getWeeklyData={getWeeklyData}
+                    currentWeekStats={currentWeekStats}
                     transactions={transactions}
                     formatCurrency={(v: number) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(v)}
                     setTransactionToDelete={async (id: number) => {
-                      if (confirm('¿Eliminar esta transacción?')) {
-                        try {
-                          await safeFetch(`/api/transactions/${id}`, { method: 'DELETE' });
-                          fetchData();
-                        } catch (err) { /* Handled */ }
-                      }
+                      showConfirmation({
+                        title: 'Eliminar Transacción',
+                        message: '¿Estás seguro de que deseas eliminar esta transacción?',
+                        confirmText: 'Eliminar',
+                        cancelText: 'Cancelar',
+                        type: 'danger',
+                        onConfirm: async () => {
+                          try {
+                            await safeFetch(`/api/transactions/${id}`, { method: 'DELETE' });
+                            fetchData();
+                            setToast({ message: 'Transacción eliminada', type: 'success' });
+                            setTimeout(() => setToast(null), 3000);
+                          } catch (err) { /* Handled */ }
+                        }
+                      });
                     }}
                     getCategoryData={getCategoryData}
                     CHART_COLORS={['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899']}
@@ -933,6 +1005,21 @@ export default function App() {
               <button
                 onClick={() => {
                   setIsFabOpen(false);
+                  setOrderModalType('quote');
+                  setIsOrderModalOpen(true);
+                }}
+                className="flex items-center gap-3 bg-[#1A1A1A] border border-white/10 hover:bg-white/10 text-white px-4 py-3 rounded-2xl shadow-xl transition-all"
+              >
+                <span className="font-bold text-sm">Nueva Cotización</span>
+                <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center">
+                  <ClipboardList size={18} className="text-white" />
+                </div>
+              </button>
+
+              <button
+                onClick={() => {
+                  setIsFabOpen(false);
+                  setOrderModalType('order');
                   setIsOrderModalOpen(true);
                 }}
                 className="flex items-center gap-3 bg-[#1A1A1A] border border-white/10 hover:bg-white/10 text-white px-4 py-3 rounded-2xl shadow-xl transition-all"
@@ -1001,8 +1088,11 @@ export default function App() {
               className="bg-[#1A1A1A] rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl border border-white/10"
             >
               <div className="p-6 border-b border-white/10 flex justify-between items-center">
-                <h3 className="text-xl font-bold">Nuevo Pedido</h3>
-                <button onClick={() => setIsOrderModalOpen(false)} className="p-2 rounded-full hover:bg-white/10 transition-colors">
+                <h3 className="text-xl font-bold">{orderModalType === 'quote' ? 'Nueva Cotización' : 'Nuevo Pedido'}</h3>
+                <button onClick={() => {
+                  setIsOrderModalOpen(false);
+                  setQuoteToConvert(null);
+                }} className="p-2 rounded-full hover:bg-white/10 transition-colors">
                   <X size={24} />
                 </button>
               </div>
@@ -1010,25 +1100,25 @@ export default function App() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-gray-500 uppercase">Cliente</label>
-                    <input name="customer_name" required className="input-field w-full" placeholder="Nombre completo" />
+                    <input name="customer_name" required className="input-field w-full" placeholder="Nombre completo" defaultValue={quoteToConvert?.customer_name || ''} />
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-gray-500 uppercase">Teléfono</label>
-                    <input name="phone" required className="input-field w-full" placeholder="10 dígitos" />
+                    <input name="phone" required className="input-field w-full" placeholder="10 dígitos" defaultValue={quoteToConvert?.phone || ''} />
                   </div>
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-gray-500 uppercase">Dirección</label>
-                  <input name="address" className="input-field w-full" placeholder="Calle, número, colonia" />
+                  <input name="address" className="input-field w-full" placeholder="Calle, número, colonia" defaultValue={quoteToConvert?.address || ''} />
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-gray-500 uppercase">Fecha de Entrega</label>
-                    <input name="delivery_date" type="date" required className="input-field w-full" />
+                    <input name="delivery_date" type="date" required className="input-field w-full" defaultValue={quoteToConvert?.delivery_date || ''} />
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-gray-500 uppercase">Tipo de Trabajo</label>
-                    <select name="work_type" required className="input-field w-full">
+                    <select name="work_type" required className="input-field w-full" defaultValue={quoteToConvert?.work_type || 'Sala'}>
                       <option value="Sala">Sala</option>
                       <option value="Silla">Silla</option>
                       <option value="Asiento Carro">Asiento Carro</option>
@@ -1038,19 +1128,23 @@ export default function App() {
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-gray-500 uppercase">Material</label>
-                  <input name="material" className="input-field w-full" placeholder="Tipo de tela, color, etc." />
+                  <input name="material" className="input-field w-full" placeholder="Tipo de tela, color, etc." defaultValue={quoteToConvert?.material || ''} />
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-gray-500 uppercase">Total</label>
-                    <input name="total" type="number" required className="input-field w-full" placeholder="0.00" />
+                    <input name="total" type="number" required className="input-field w-full" placeholder="0.00" defaultValue={quoteToConvert?.total || ''} />
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-500 uppercase">Anticipo</label>
-                    <input name="advance" type="number" required className="input-field w-full" placeholder="0.00" />
-                  </div>
+                  {!orderModalType || orderModalType === 'order' ? (
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-gray-500 uppercase">Anticipo</label>
+                      <input name="advance" type="number" required className="input-field w-full" placeholder="0.00" />
+                    </div>
+                  ) : (
+                    <input name="advance" type="hidden" value="0" />
+                  )}
                 </div>
-                <button type="submit" className="btn-primary w-full py-4 text-lg">Crear Pedido</button>
+                <button type="submit" className="btn-primary w-full py-4 text-lg">{orderModalType === 'quote' ? 'Crear Cotización' : 'Crear Pedido'}</button>
               </form>
             </motion.div>
           </motion.div>
@@ -1133,7 +1227,7 @@ export default function App() {
                     <ClipboardList size={24} />
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold">Resumen del Pedido</h3>
+                    <h3 className="text-xl font-bold">{selectedOrderDetails.is_quote ? 'Resumen de Cotización' : 'Resumen del Pedido'}</h3>
                   </div>
                 </div>
                 <button onClick={() => setSelectedOrderDetails(null)} className="p-2 rounded-full hover:bg-white/10 transition-colors">
@@ -1178,14 +1272,16 @@ export default function App() {
 
                 </div>
                 <div className="space-y-4 pt-4 border-t border-white/5">
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-400">Anticipo pagado</span>
-                    <span className="font-mono font-bold text-emerald-500">{new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(selectedOrderDetails.advance)}</span>
-                  </div>
+                  {!selectedOrderDetails.is_quote && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-400">Anticipo pagado</span>
+                      <span className="font-mono font-bold text-emerald-500">{new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(selectedOrderDetails.advance)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between items-center pb-4 border-b border-white/5">
-                    <span className="text-white font-bold text-lg">Saldo Restante</span>
+                    <span className="text-white font-bold text-lg">{selectedOrderDetails.is_quote ? 'Total Cotizado' : 'Saldo Restante'}</span>
                     <span className="font-mono font-black text-2xl text-primary">
-                      {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(selectedOrderDetails.total - selectedOrderDetails.advance)}
+                      {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(selectedOrderDetails.is_quote ? selectedOrderDetails.total : selectedOrderDetails.total - selectedOrderDetails.advance)}
                     </span>
                   </div>
 
@@ -1195,13 +1291,15 @@ export default function App() {
                       className="py-4 flex items-center justify-center gap-3 text-white font-bold hover:bg-white/5 rounded-2xl transition-colors"
                     >
                       <Download size={20} />
-                      Descargar Nota de Remisión (PDF)
+                      {selectedOrderDetails.is_quote ? 'Descargar Cotización (PDF)' : 'Descargar Nota de Remisión (PDF)'}
                     </button>
 
-                    <button className="py-4 bg-[#2A1115] text-primary rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-[#3A181D] transition-colors">
-                      <Calendar size={20} />
-                      Sincronizar con Calendario
-                    </button>
+                    {!selectedOrderDetails.is_quote && (
+                      <button className="py-4 bg-[#2A1115] text-primary rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-[#3A181D] transition-colors">
+                        <Calendar size={20} />
+                        Sincronizar con Calendario
+                      </button>
+                    )}
 
                     <button 
                       onClick={() => window.open(`tel:${selectedOrderDetails.phone}`)}
@@ -1213,15 +1311,20 @@ export default function App() {
 
                     <button 
                       onClick={() => {
-                        const text = profile.whatsapp_template
-                          .replace('{empresa}', profile.business_name)
-                          .replace('{cliente}', selectedOrderDetails.customer_name)
-                          .replace('{trabajo}', selectedOrderDetails.work_type)
-                          .replace('{material}', selectedOrderDetails.material)
-                          .replace('{entrega}', safeFormatDate(selectedOrderDetails.delivery_date, 'dd/MM/yyyy'))
-                          .replace('{total}', selectedOrderDetails.total.toString())
-                          .replace('{anticipo}', selectedOrderDetails.advance.toString())
-                          .replace('{restante}', (selectedOrderDetails.total - selectedOrderDetails.advance).toString());
+                        let text = '';
+                        if (selectedOrderDetails.is_quote) {
+                          text = `Estimado/a ${selectedOrderDetails.customer_name}, le compartimos la cotización solicitada por el trabajo de ${selectedOrderDetails.work_type}. Enseguida le enviaremos el documento PDF.`;
+                        } else {
+                          text = profile.whatsapp_template
+                            .replace('{empresa}', profile.business_name)
+                            .replace('{cliente}', selectedOrderDetails.customer_name)
+                            .replace('{trabajo}', selectedOrderDetails.work_type)
+                            .replace('{material}', selectedOrderDetails.material)
+                            .replace('{entrega}', safeFormatDate(selectedOrderDetails.delivery_date, 'dd/MM/yyyy'))
+                            .replace('{total}', selectedOrderDetails.total.toString())
+                            .replace('{anticipo}', selectedOrderDetails.advance.toString())
+                            .replace('{restante}', (selectedOrderDetails.total - selectedOrderDetails.advance).toString());
+                        }
                         
                         const url = profile.use_whatsapp_business 
                           ? `https://wa.me/52${selectedOrderDetails.phone}?text=${encodeURIComponent(text)}`
@@ -1231,10 +1334,10 @@ export default function App() {
                       className="py-4 bg-[#00D084] text-white rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-[#00B874] transition-colors"
                     >
                       <MessageCircle size={20} />
-                      Mandar mensaje al cliente
+                      {selectedOrderDetails.is_quote ? 'Enviar al cliente' : 'Mandar mensaje al cliente'}
                     </button>
 
-                    {selectedOrderDetails.status === 'pending' && (
+                    {selectedOrderDetails.status === 'pending' && !selectedOrderDetails.is_quote && (
                       <>
                         <button 
                           onClick={() => setPaymentModal({ isOpen: true, orderId: selectedOrderDetails.id, amount: '' })}
@@ -1254,6 +1357,21 @@ export default function App() {
                       </>
                     )}
 
+                    {selectedOrderDetails.is_quote && (
+                      <button 
+                        onClick={() => {
+                          setQuoteToConvert(selectedOrderDetails);
+                          setOrderModalType('order');
+                          setSelectedOrderDetails(null);
+                          setIsOrderModalOpen(true);
+                        }}
+                        className="py-4 bg-primary text-white rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
+                      >
+                        <Plus size={20} />
+                        Convertir a Pedido
+                      </button>
+                    )}
+
                     <button 
                       onClick={() => {
                         setOrderToDelete(selectedOrderDetails.id);
@@ -1262,7 +1380,7 @@ export default function App() {
                       className="py-4 bg-[#2A1115] text-primary rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-[#3A181D] transition-colors"
                     >
                       <Trash2 size={20} />
-                      Cancelar Pedido
+                      {selectedOrderDetails.is_quote ? 'Eliminar Cotización' : 'Cancelar Pedido'}
                     </button>
                   </div>
                 </div>
