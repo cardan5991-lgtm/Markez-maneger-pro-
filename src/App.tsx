@@ -119,26 +119,7 @@ export default function App() {
   const [limits, setLimits] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
-  const lastActive = useRef(Date.now());
 
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        const now = Date.now();
-        // If app was in background for more than 2 hours, reload to prevent white screen / stale state
-        if (now - lastActive.current > 2 * 60 * 60 * 1000) {
-          window.location.reload();
-        } else {
-          lastActive.current = now;
-        }
-      } else {
-        lastActive.current = Date.now();
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, []);
   const [insights, setInsights] = useState<string | null>(null);
   const [chatMessages, setChatMessages] = useState<{role: 'user' | 'model', text: string, timestamp: string}[]>([]);
   const [unreadChatCount, setUnreadChatCount] = useState(0);
