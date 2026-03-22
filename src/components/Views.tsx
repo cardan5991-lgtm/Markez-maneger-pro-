@@ -1,5 +1,7 @@
 import React from 'react';
-import { motion } from 'motion/react';
+import { auth, db } from '../firebase';
+import { doc, setDoc, updateDoc, addDoc, collection } from 'firebase/firestore';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -23,11 +25,15 @@ import {
   Smartphone,
   RefreshCw,
   MessageCircle,
+  MessageSquare,
+  Send,
   Check,
   Calendar,
   Sparkles,
-  Lock
+  Lock,
+  X
 } from 'lucide-react';
+import Markdown from 'react-markdown';
 import { 
   ComposedChart, 
   CartesianGrid, 
@@ -248,7 +254,7 @@ export const DashboardView = React.memo(({
               )}
             </div>
           </div>
-          <div className="text-sm text-gray-300 leading-relaxed whitespace-pre-line">
+          <div className="text-sm text-gray-300 leading-relaxed whitespace-pre-line mb-6">
             {isGeneratingInsights ? (
               <div className="space-y-3">
                 <div className="h-4 bg-white/5 rounded-full w-full animate-pulse" />
@@ -275,6 +281,17 @@ export const DashboardView = React.memo(({
                 )}
               </div>
             )}
+          </div>
+
+          {/* Chat con Max Button */}
+          <div className="mt-auto border-t border-white/10 pt-4">
+            <button 
+              onClick={() => window.dispatchEvent(new CustomEvent('open-chat-modal'))}
+              className="w-full py-3 px-4 bg-primary hover:bg-primary/80 text-white rounded-xl font-bold shadow-lg transition-all flex items-center justify-center gap-2"
+            >
+              <MessageSquare size={18} />
+              Chatear con Asesor Max
+            </button>
           </div>
         </div>
 
@@ -706,6 +723,44 @@ export const FinancesView = React.memo(({
 
 FinancesView.displayName = 'FinancesView';
 
+const LimitInput = ({ workType, limit, currentUser }: { workType: string, limit: any, currentUser: any }) => {
+  const [val, setVal] = React.useState(limit?.limit_val || 0);
+
+  React.useEffect(() => {
+    setVal(limit?.limit_val || 0);
+  }, [limit?.limit_val]);
+
+  const handleBlur = async () => {
+    if (!currentUser) return;
+    const newVal = Number(val);
+    if (newVal === (limit?.limit_val || 0)) return; // No change
+
+    try {
+      const limitId = workType.replace(/\s+/g, '_').toLowerCase();
+      await setDoc(doc(db, `users/${currentUser.uid}/limits`, limitId), { 
+        work_type: workType, 
+        limit_val: newVal, 
+        uid: currentUser.uid 
+      }, { merge: true });
+    } catch (err) {
+      console.error("Error updating limit:", err);
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <label className="text-xs font-bold text-gray-500 uppercase">{workType}</label>
+      <input 
+        type="number" 
+        className="input-field" 
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+        onBlur={handleBlur}
+      />
+    </div>
+  );
+};
+
 export const SettingsView = React.memo(({ 
   profile, 
   setProfile, 
@@ -723,9 +778,7 @@ export const SettingsView = React.memo(({
   setIsDarkMode, 
   selectedTheme, 
   setSelectedTheme,
-  safeFetch,
-  setPasswordPrompt,
-  fetchData
+  setPasswordPrompt
 }: any) => {
   return (
     <motion.div 
@@ -814,15 +867,15 @@ export const SettingsView = React.memo(({
         </div>
         <button 
           onClick={async () => {
+            if (!auth.currentUser) return;
             try {
-              await safeFetch('/api/profile', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(profile)
-              });
+              await setDoc(doc(db, 'users', auth.currentUser.uid), { ...profile, uid: auth.currentUser.uid }, { merge: true });
               setToast({ message: 'Perfil actualizado correctamente', type: 'success' });
               setTimeout(() => setToast(null), 3000);
-            } catch (err) { /* Handled */ }
+            } catch (err: any) {
+              setToast({ message: 'Error al actualizar perfil: ' + err.message, type: 'error' });
+              setTimeout(() => setToast(null), 3000);
+            }
           }}
           className="btn-primary w-full"
         >
@@ -854,12 +907,24 @@ export const SettingsView = React.memo(({
 
       <div className="card space-y-6">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-amber-500/10 rounded-xl flex items-center justify-center">
-            <Download className="text-amber-500" size={20} />
+          <div className="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center">
+            <CheckCircle2 className="text-emerald-500" size={20} />
           </div>
           <div>
             <h3 className="text-lg font-bold">Respaldo y Seguridad</h3>
-            <p className="text-gray-500 text-xs">Evita perder tus datos durante actualizaciones</p>
+            <p className="text-gray-500 text-xs">Tu información está segura en la nube</p>
+          </div>
+        </div>
+
+        <div className="p-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 flex items-start gap-4">
+          <div className="p-2 bg-emerald-500/20 rounded-lg shrink-0">
+            <RefreshCw className="text-emerald-500 animate-spin-slow" size={20} />
+          </div>
+          <div>
+            <h4 className="font-bold text-emerald-500 mb-1">Copia de Seguridad Automática Activada</h4>
+            <p className="text-sm text-gray-400">
+              Todos tus pedidos, finanzas y configuraciones se guardan automáticamente en la nube de forma segura en tiempo real. No necesitas realizar respaldos manuales.
+            </p>
           </div>
         </div>
 
@@ -938,30 +1003,17 @@ export const SettingsView = React.memo(({
           Límites de Capacidad Mensual
         </h3>
         <div className="grid grid-cols-2 gap-4">
-          {(limits || []).map((limit: any, idx: number) => (
-            <div key={`limit-${limit.work_type}-${idx}`} className="space-y-2">
-              <label className="text-xs font-bold text-gray-500 uppercase">{limit.work_type}</label>
-              <input 
-                type="number" 
-                className="input-field" 
-                value={limit.limit_val || 0}
-                onChange={async (e) => {
-                  const newVal = Number(e.target.value);
-                  const newLimits = [...limits];
-                  newLimits[idx].limit_val = newVal;
-                  setLimits(newLimits);
-                  
-                  try {
-                    await safeFetch('/api/limits', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ work_type: limit.work_type, limit_val: newVal })
-                    });
-                  } catch (err) { /* Handled */ }
-                }}
+          {['Sala', 'Silla', 'Asiento Carro', 'Camion'].map((workType: string, idx: number) => {
+            const limit = (limits || []).find((l: any) => l.work_type === workType);
+            return (
+              <LimitInput 
+                key={`limit-${workType}-${idx}`} 
+                workType={workType} 
+                limit={limit} 
+                currentUser={auth.currentUser} 
               />
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -980,15 +1032,15 @@ export const SettingsView = React.memo(({
         </div>
         <button 
           onClick={async () => {
+            if (!auth.currentUser) return;
             try {
-              await safeFetch('/api/profile', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(profile)
-              });
+              await setDoc(doc(db, 'users', auth.currentUser.uid), { ...profile, uid: auth.currentUser.uid }, { merge: true });
               setToast({ message: 'Plantilla guardada', type: 'success' });
               setTimeout(() => setToast(null), 3000);
-            } catch (err) { /* Handled */ }
+            } catch (err: any) {
+              setToast({ message: 'Error al guardar plantilla: ' + err.message, type: 'error' });
+              setTimeout(() => setToast(null), 3000);
+            }
           }}
           className="btn-primary w-full"
         >
@@ -1010,54 +1062,7 @@ export const SettingsView = React.memo(({
           Exportar Datos a Excel (CSV)
         </button>
         
-        <div className="border-t border-white/5 pt-6 mt-6">
-          <h4 className="font-bold mb-2">Base de Datos (Avanzado)</h4>
-          <p className="text-xs text-gray-500 mb-4">Crea una copia de seguridad manual de toda la base de datos o restaura la última copia guardada.</p>
-          <div className="flex flex-col gap-3">
-            <button 
-              onClick={async () => {
-                try {
-                  const res = await fetch('/api/backup', { method: 'POST' });
-                  if (res.ok) {
-                    setToast({ message: 'Copia de seguridad creada con éxito', type: 'success' });
-                  } else {
-                    setToast({ message: 'Error al crear la copia', type: 'error' });
-                  }
-                } catch (e) {
-                  setToast({ message: 'Error de conexión', type: 'error' });
-                }
-                setTimeout(() => setToast(null), 3000);
-              }}
-              className="w-full py-3 rounded-xl bg-white/5 border border-white/10 font-bold flex items-center justify-center gap-2 hover:bg-white/10 transition-all"
-            >
-              <Download size={18} />
-              Respaldar Base de Datos
-            </button>
-            <button 
-              onClick={async () => {
-                if (window.confirm('¿Estás seguro de que deseas restaurar la última copia de seguridad? Esto sobrescribirá los datos actuales.')) {
-                  try {
-                    const res = await fetch('/api/restore', { method: 'POST' });
-                    if (res.ok) {
-                      setToast({ message: 'Base de datos restaurada. Recargando...', type: 'success' });
-                      setTimeout(() => window.location.reload(), 2000);
-                    } else {
-                      setToast({ message: 'No se encontró ninguna copia de seguridad', type: 'error' });
-                      setTimeout(() => setToast(null), 3000);
-                    }
-                  } catch (e) {
-                    setToast({ message: 'Error de conexión', type: 'error' });
-                    setTimeout(() => setToast(null), 3000);
-                  }
-                }
-              }}
-              className="w-full py-3 rounded-xl bg-rose-500/10 text-rose-500 border border-rose-500/20 font-bold flex items-center justify-center gap-2 hover:bg-rose-500/20 transition-all"
-            >
-              <RefreshCw size={18} />
-              Restaurar Base de Datos
-            </button>
-          </div>
-        </div>
+
       </div>
 
       <div className="card space-y-6">
@@ -1137,14 +1142,14 @@ export const SettingsView = React.memo(({
               const newProfile = {...profile, use_whatsapp_business: !profile.use_whatsapp_business};
               setProfile(newProfile);
               try {
-                await safeFetch('/api/profile', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(newProfile)
-                });
+                if (!auth.currentUser) return;
+                await setDoc(doc(db, 'users', auth.currentUser.uid), { ...newProfile, uid: auth.currentUser.uid }, { merge: true });
                 setToast({ message: 'Preferencia guardada', type: 'success' });
                 setTimeout(() => setToast(null), 2000);
-              } catch (err) { /* Handled */ }
+              } catch (err: any) {
+                setToast({ message: 'Error al guardar preferencia: ' + err.message, type: 'error' });
+                setTimeout(() => setToast(null), 2000);
+              }
             }}
             className={cn(
               "w-12 h-6 rounded-full transition-colors relative",

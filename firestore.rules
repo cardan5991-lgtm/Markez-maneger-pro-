@@ -1,0 +1,201 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId}
+    // Fields:
+    //   - uid: string (required)
+    //   - role: string (required, 'admin' or 'user')
+    //   - business_name: string (optional)
+    //   - phone: string (optional)
+    //   - address: string (optional)
+    //   - logo_url: string (optional)
+    //   - use_whatsapp_business: boolean (optional)
+    //
+    // Collection: users/{userId}/orders
+    // Document ID: {orderId}
+    // Fields:
+    //   - uid: string (required)
+    //   - customer_name: string (required)
+    //   - phone: string (required)
+    //   - address: string (optional)
+    //   - delivery_date: string (required)
+    //   - work_type: string (required)
+    //   - material: string (optional)
+    //   - total: number (required)
+    //   - advance: number (required)
+    //   - status: string (required, 'pending' or 'completed')
+    //   - registration_date: string (required)
+    //   - is_quote: boolean (optional)
+    //
+    // Collection: users/{userId}/transactions
+    // Document ID: {transactionId}
+    // Fields:
+    //   - uid: string (required)
+    //   - date: string (required)
+    //   - amount: number (required)
+    //   - type: string (required, 'income' or 'expense')
+    //   - category: string (required)
+    //   - description: string (required)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.uid;
+    }
+
+    function uidUnchanged() {
+      return !('uid' in request.resource.data) || request.resource.data.uid == request.auth.uid;
+    }
+
+    function uidNotModified() {
+      return !('uid' in request.resource.data) || request.resource.data.uid == resource.data.uid;
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function validStringLength(field, minLen, maxLen) {
+      return request.resource.data[field] is string &&
+        request.resource.data[field].size() >= minLen &&
+        request.resource.data[field].size() <= maxLen;
+    }
+
+    function isValidOptionalString(field, minLen, maxLen) {
+      return !(field in request.resource.data) ||
+             request.resource.data[field] == null ||
+             (request.resource.data[field] is string &&
+              request.resource.data[field].size() >= minLen &&
+              request.resource.data[field].size() <= maxLen);
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "cardan5991@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser() {
+      let allowedKeys = ['uid', 'role', 'business_name', 'phone', 'address', 'logo_url', 'whatsapp_template', 'use_whatsapp_business'];
+      return request.resource.data.keys().hasOnly(allowedKeys) &&
+             hasRequiredFields(['uid', 'role']) &&
+             request.resource.data.uid == request.auth.uid &&
+             request.resource.data.role in ['admin', 'user'] &&
+             isValidOptionalString('business_name', 0, 100) &&
+             isValidOptionalString('phone', 0, 20) &&
+             isValidOptionalString('address', 0, 200) &&
+             isValidOptionalString('logo_url', 0, 500) &&
+             isValidOptionalString('whatsapp_template', 0, 1000) &&
+             (!( 'use_whatsapp_business' in request.resource.data ) || request.resource.data.use_whatsapp_business is bool);
+    }
+
+    function isValidOrder() {
+      let allowedKeys = ['uid', 'customer_name', 'phone', 'address', 'delivery_date', 'work_type', 'material', 'description', 'total', 'advance', 'status', 'registration_date', 'is_quote'];
+      return request.resource.data.keys().hasOnly(allowedKeys) &&
+             hasRequiredFields(['uid', 'customer_name', 'phone', 'delivery_date', 'work_type', 'total', 'advance', 'status', 'registration_date']) &&
+             request.resource.data.uid == request.auth.uid &&
+             validStringLength('customer_name', 1, 100) &&
+             validStringLength('phone', 1, 20) &&
+             isValidOptionalString('address', 0, 200) &&
+             validStringLength('delivery_date', 1, 50) &&
+             validStringLength('work_type', 1, 50) &&
+             isValidOptionalString('material', 0, 200) &&
+             isValidOptionalString('description', 0, 1000) &&
+             request.resource.data.total is number && request.resource.data.total >= 0 &&
+             request.resource.data.advance is number && request.resource.data.advance >= 0 &&
+             request.resource.data.status in ['pending', 'completed'] &&
+             validStringLength('registration_date', 1, 50) &&
+             (!( 'is_quote' in request.resource.data ) || request.resource.data.is_quote is bool);
+    }
+
+    function isValidTransaction() {
+      let allowedKeys = ['uid', 'date', 'amount', 'type', 'category', 'concept', 'order_id'];
+      return request.resource.data.keys().hasOnly(allowedKeys) &&
+             hasRequiredFields(['uid', 'date', 'amount', 'type', 'category', 'concept']) &&
+             request.resource.data.uid == request.auth.uid &&
+             validStringLength('date', 1, 50) &&
+             request.resource.data.amount is number && request.resource.data.amount >= 0 &&
+             request.resource.data.type in ['income', 'expense'] &&
+             validStringLength('category', 1, 50) &&
+             validStringLength('concept', 1, 200) &&
+             (!( 'order_id' in request.resource.data ) || request.resource.data.order_id is string);
+    }
+
+    function isValidLimit() {
+      let allowedKeys = ['uid', 'work_type', 'limit_val'];
+      return request.resource.data.keys().hasOnly(allowedKeys) &&
+             hasRequiredFields(['uid', 'work_type', 'limit_val']) &&
+             request.resource.data.uid == request.auth.uid &&
+             validStringLength('work_type', 1, 50) &&
+             request.resource.data.limit_val is number && request.resource.data.limit_val >= 0;
+    }
+
+    function isValidChatMessage() {
+      let allowedKeys = ['role', 'text', 'timestamp'];
+      return request.resource.data.keys().hasOnly(allowedKeys) &&
+             hasRequiredFields(['role', 'text', 'timestamp']) &&
+             request.resource.data.role in ['user', 'model'] &&
+             validStringLength('text', 1, 10000) &&
+             validStringLength('timestamp', 1, 50);
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUser() && uidUnchanged() && (request.resource.data.role == 'user' || isAdmin());
+      allow update: if isOwner(userId) && isValidUser() && uidNotModified() && (request.resource.data.role == resource.data.role || isAdmin());
+      allow delete: if isOwner(userId);
+
+      match /limits/{limitId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidLimit() && uidUnchanged();
+        allow update: if isOwner(userId) && isValidLimit() && uidNotModified();
+        allow delete: if isOwner(userId);
+      }
+
+      match /financial_chat/{chatId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidChatMessage();
+        allow update: if isOwner(userId) && isValidChatMessage();
+        allow delete: if isOwner(userId);
+      }
+
+      match /orders/{orderId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidOrder() && uidUnchanged();
+        allow update: if isOwner(userId) && isValidOrder() && uidNotModified();
+        allow delete: if isOwner(userId);
+      }
+
+      match /transactions/{transactionId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidTransaction() && uidUnchanged();
+        allow update: if isOwner(userId) && isValidTransaction() && uidNotModified();
+        allow delete: if isOwner(userId);
+      }
+    }
+  }
+}
