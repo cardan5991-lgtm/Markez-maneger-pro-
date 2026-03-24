@@ -434,7 +434,8 @@ export default function App() {
       
       Responde de manera concisa, útil y motivadora.`;
 
-      const conversationHistory = chatMessages.map(msg => `${msg.role === 'model' ? 'Max' : 'Usuario'}: ${msg.text}`).join('\n\n');
+      const recentMessages = chatMessages.slice(-10);
+      const conversationHistory = recentMessages.map(msg => `${msg.role === 'model' ? 'Max' : 'Usuario'}: ${msg.text}`).join('\n\n');
       
       const prompt = `Historial de conversación:
 ${conversationHistory}
@@ -452,7 +453,16 @@ Usuario: ${message}`;
 
     } catch (err: any) {
       console.error("Error sending message to Max:", err);
-      setToast({ message: `Error: ${err.message || "Error al enviar mensaje a Max."}`, type: 'error' });
+      let errorMessage = "Error al enviar mensaje a Max.";
+      const rawError = err.message || "";
+      
+      if (rawError.includes("quota") || rawError.includes("429") || rawError.includes("rate-limits")) {
+        errorMessage = "Límite de mensajes rápidos alcanzado. Por favor, espera 1 minuto para que Max descanse.";
+      } else {
+        errorMessage = rawError.length > 100 ? "Error de conexión con la IA. Intenta de nuevo." : rawError;
+      }
+      
+      setToast({ message: errorMessage, type: 'error' });
     } finally {
       setIsSendingMessage(false);
     }
