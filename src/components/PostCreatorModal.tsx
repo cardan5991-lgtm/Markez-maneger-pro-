@@ -40,10 +40,8 @@ export const PostCreatorModal: React.FC<PostCreatorModalProps> = ({ isOpen, onCl
     setGeneratedPost(null);
 
     try {
-      // Fetch API key from backend
-      const configRes = await fetch("/api/config/gemini");
-      const configData = await configRes.json();
-      const apiKey = configData.apiKey;
+      // Fetch API key from environment variables
+      const apiKey = process.env.GEMINI_API_KEY;
 
       if (!apiKey || apiKey === "undefined" || apiKey === "null" || apiKey.trim() === "") {
         throw new Error("La Inteligencia Artificial no está disponible en este momento (Falta configuración).");
