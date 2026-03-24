@@ -450,9 +450,9 @@ Usuario: ${message}`;
       const aiMsg = { role: 'model', text: result.text || "No pude procesar tu solicitud.", timestamp: new Date().toISOString() };
       await addDoc(collection(db, `users/${userId}/financial_chat`), aiMsg);
 
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error sending message to Max:", err);
-      setToast({ message: "Error al enviar mensaje a Max.", type: 'error' });
+      setToast({ message: `Error: ${err.message || "Error al enviar mensaje a Max."}`, type: 'error' });
     } finally {
       setIsSendingMessage(false);
     }
