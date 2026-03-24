@@ -232,7 +232,7 @@ export const DashboardView = React.memo(({
       </div>
 
       {/* AI Tools & Insights */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         {/* Smart Insights */}
         <div className="card bg-gradient-to-br from-primary/20 to-transparent border-primary/20">
           <div className="flex items-center gap-3 mb-4">
@@ -254,7 +254,7 @@ export const DashboardView = React.memo(({
               )}
             </div>
           </div>
-          <div className="text-sm text-gray-300 leading-relaxed whitespace-pre-line mb-6">
+          <div className="text-sm text-gray-300 leading-relaxed whitespace-pre-line mb-6 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
             {isGeneratingInsights ? (
               <div className="space-y-3">
                 <div className="h-4 bg-white/5 rounded-full w-full animate-pulse" />
@@ -458,7 +458,7 @@ export const OrdersView = React.memo(({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {filteredOrders.length === 0 && (
           <div className="col-span-full py-20 text-center card bg-white/5 border-dashed border-white/10">
             <ClipboardList className="mx-auto text-gray-600 mb-4 opacity-20" size={64} />
