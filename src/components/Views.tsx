@@ -224,7 +224,7 @@ export const DashboardView = React.memo(({
         />
         <StatCard 
           title="Pedidos Activos" 
-          value={orders.filter((o: any) => o.status === 'pending').length} 
+          value={orders.filter((o: any) => o.status === 'pending' && !o.is_quote && !o.is_canceled && !o.archived).length} 
           icon={ClipboardList} 
           type="neutral" 
           onClick={() => handleTabChange('orders')}
@@ -371,7 +371,7 @@ export const DashboardView = React.memo(({
             <button onClick={() => handleTabChange('orders')} className="text-primary text-xs font-bold uppercase tracking-wider hover:underline">Ver todos</button>
           </div>
           <div className="space-y-4">
-            {orders.filter((o: any) => o.status === 'pending' && !o.is_quote).slice(0, 5).map((order: any, idx: number) => (
+            {orders.filter((o: any) => o.status === 'pending' && !o.is_quote && !o.is_canceled && !o.archived).slice(0, 5).map((order: any, idx: number) => (
               <div 
                 key={`pending-${order.id}-${idx}`} 
                 onClick={() => setSelectedOrderDetails(order)}
@@ -637,7 +637,10 @@ export const FinancesView = React.memo(({
                 <div className="py-10 text-center text-gray-500 text-sm">No hay transacciones registradas</div>
               )}
               {transactions.map((t: any, idx: number) => (
-                <div key={`trans-${t.id}-${idx}`} className="flex items-center justify-between p-4 rounded-xl hover:bg-white/5 transition-colors group">
+                <div key={`trans-${t.id}-${idx}`} className={cn(
+                  "flex items-center justify-between p-4 rounded-xl hover:bg-white/5 transition-colors group",
+                  t.is_canceled && "opacity-50"
+                )}>
                   <div className="flex items-center gap-4">
                     <div className={cn(
                       "w-10 h-10 rounded-xl flex items-center justify-center",
@@ -646,14 +649,22 @@ export const FinancesView = React.memo(({
                       {t.type === 'income' ? <ArrowUpRight size={20} /> : <ArrowDownRight size={20} />}
                     </div>
                     <div>
-                      <p className="font-medium">{t.concept}</p>
+                      <div className="flex items-center gap-2">
+                        <p className={cn("font-medium", t.is_canceled && "line-through")}>{t.concept}</p>
+                        {t.is_canceled && (
+                          <span className="text-[10px] uppercase tracking-wider bg-rose-500/20 text-rose-400 px-2 py-0.5 rounded-full font-bold">
+                            Cancelado
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs text-gray-500">{t.category} • {safeFormatDate(t.date, 'dd MMM, HH:mm', { locale: es })}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
                     <span className={cn(
                       "font-bold font-mono",
-                      t.type === 'income' ? "text-emerald-500" : "text-rose-500"
+                      t.type === 'income' ? "text-emerald-500" : "text-rose-500",
+                      t.is_canceled && "line-through"
                     )}>
                       {t.type === 'income' ? '+' : '-'}{formatCurrency(t.amount)}
                     </span>

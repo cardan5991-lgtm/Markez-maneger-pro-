@@ -37,6 +37,8 @@ import { format, startOfMonth, endOfMonth, isWithinInterval, subMonths, startOfW
 import { es } from 'date-fns/locale';
 import { cn } from './lib/utils';
 import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
 import { db, auth } from './firebase';
 import { collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, addDoc } from 'firebase/firestore';
 import { signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from 'firebase/auth';
@@ -65,6 +67,8 @@ interface Order {
   advance: number;
   status: 'pending' | 'completed' | 'cancelled';
   is_quote?: boolean;
+  is_canceled?: boolean;
+  archived?: boolean;
 }
 
 interface Transaction {
@@ -75,6 +79,8 @@ interface Transaction {
   type: 'income' | 'expense';
   category: string;
   order_id?: string;
+  is_canceled?: boolean;
+  archived?: boolean;
 }
 
 interface Profile {
@@ -161,6 +167,8 @@ export default function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [isChatModalOpen]);
 
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+
   useEffect(() => {
     const handleOpenChat = () => {
       window.history.pushState({ chatOpen: true }, '');
@@ -185,7 +193,7 @@ export default function App() {
   const [selectedOrderDetails, setSelectedOrderDetails] = useState<Order | null>(null);
   const [transactionToDelete, setTransactionToDelete] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
-  const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
+  const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'warning' } | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [selectedTheme, setSelectedTheme] = useState('default');
@@ -194,6 +202,9 @@ export default function App() {
   const [passwordPrompt, setPasswordPrompt] = useState<any>({ isOpen: false, action: '', passwordInput: '', newPasswordInput: '' });
   const [orderToDelete, setOrderToDelete] = useState<string | null>(null);
   const [paymentModal, setPaymentModal] = useState<{ isOpen: boolean, orderId: string | null, amount: string }>({ isOpen: false, orderId: null, amount: '' });
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [monthlyReportReady, setMonthlyReportReady] = useState<{ month: number, year: number, transactions: Transaction[] } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -331,8 +342,154 @@ export default function App() {
     return () => window.removeEventListener('open-post-creator', handleOpenPostCreator);
   }, []);
 
+  // --- Computed Data ---
+  const visibleTransactions = useMemo(() => {
+    return transactions.filter(t => !t.archived);
+  }, [transactions]);
+
+  const validTransactions = useMemo(() => {
+    return transactions.filter(t => !t.is_canceled && !t.archived);
+  }, [transactions]);
+
+  const financeStats = useMemo(() => {
+    const income = validTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + Number(t.amount), 0);
+    const expense = validTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + Number(t.amount), 0);
+    return { income, expense };
+  }, [validTransactions]);
+
+  const filteredOrders = useMemo(() => {
+    return orders.filter(o => {
+      if (o.is_canceled || o.archived) return false;
+      const matchesSearch = o.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                            o.phone.includes(searchTerm);
+      let matchesStatus = false;
+      if (orderFilter === 'quotes') {
+        matchesStatus = !!o.is_quote;
+      } else if (orderFilter === 'completed') {
+        matchesStatus = !o.is_quote && o.status === 'completed';
+      } else {
+        matchesStatus = !o.is_quote && o.status === 'pending';
+      }
+      return matchesSearch && matchesStatus;
+    });
+  }, [orders, searchTerm, orderFilter]);
+
+  const capacityWarnings = useMemo(() => {
+    const pendingByWork = orders.filter(o => o.status === 'pending' && !o.is_quote && !o.is_canceled && !o.archived).reduce((acc: any, o) => {
+      acc[o.work_type] = (acc[o.work_type] || 0) + 1;
+      return acc;
+    }, {});
+
+    return limits.map(l => ({
+      type: l.work_type,
+      current: pendingByWork[l.work_type] || 0,
+      limit: l.limit_val,
+      percentage: ((pendingByWork[l.work_type] || 0) / l.limit_val) * 100
+    })).filter(w => w.percentage >= 80);
+  }, [orders, limits]);
+
+  const getMonthlyData = useMemo(() => {
+    const months = Array.from({ length: 6 }, (_, i) => {
+      const date = subMonths(new Date(), i);
+      return {
+        name: format(date, 'MMM', { locale: es }),
+        month: date.getMonth(),
+        year: date.getFullYear(),
+        income: 0,
+        expense: 0
+      };
+    }).reverse();
+
+    validTransactions.forEach(t => {
+      const tDate = new Date(t.date);
+      const monthData = months.find(m => m.month === tDate.getMonth() && m.year === tDate.getFullYear());
+      if (monthData) {
+        if (t.type === 'income') monthData.income += Number(t.amount);
+        else monthData.expense += Number(t.amount);
+      }
+    });
+
+    return months;
+  }, [validTransactions]);
+
+  const getWeeklyData = useMemo(() => {
+    const start = startOfWeek(new Date(), { weekStartsOn: 1 }); // Monday
+    const end = endOfWeek(new Date(), { weekStartsOn: 1 }); // Sunday
+    
+    const days = eachDayOfInterval({ start, end }).map(date => ({
+      date,
+      name: format(date, 'EEEE', { locale: es }).substring(0, 3).toUpperCase(),
+      income: 0,
+      expense: 0
+    }));
+
+    validTransactions.forEach(t => {
+      const tDate = new Date(t.date);
+      const dayData = days.find(d => isSameDay(d.date, tDate));
+      if (dayData) {
+        if (t.type === 'income') dayData.income += Number(t.amount);
+        else dayData.expense += Number(t.amount);
+      }
+    });
+
+    return days;
+  }, [validTransactions]);
+
+  const currentWeekStats = useMemo(() => {
+    return getWeeklyData.reduce((acc, day) => {
+      acc.income += day.income;
+      acc.expense += day.expense;
+      return acc;
+    }, { income: 0, expense: 0 });
+  }, [getWeeklyData]);
+
+  const getCategoryData = useMemo(() => {
+    const cats: any = {};
+    validTransactions.filter(t => t.type === 'expense').forEach(t => {
+      cats[t.category] = (cats[t.category] || 0) + Number(t.amount);
+    });
+    return Object.entries(cats).map(([name, value]) => ({ name, value: Number(value) }));
+  }, [validTransactions]);
+
+  useEffect(() => {
+    if (!isLoggedIn || validTransactions.length === 0) return;
+
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    // Find the oldest unarchived transaction from a previous month
+    const previousMonthTxs = validTransactions.filter(t => {
+      const tDate = new Date(t.date);
+      return tDate.getFullYear() < currentYear || (tDate.getFullYear() === currentYear && tDate.getMonth() < currentMonth);
+    });
+
+    if (previousMonthTxs.length > 0) {
+      // Group by month/year to find the oldest one
+      const oldestTx = previousMonthTxs.reduce((oldest, t) => {
+        const tDate = new Date(t.date);
+        const oldestDate = new Date(oldest.date);
+        return tDate < oldestDate ? t : oldest;
+      });
+      const oldestDate = new Date(oldestTx.date);
+      const targetMonth = oldestDate.getMonth();
+      const targetYear = oldestDate.getFullYear();
+
+      const txsToArchive = previousMonthTxs.filter(t => {
+        const d = new Date(t.date);
+        return d.getMonth() === targetMonth && d.getFullYear() === targetYear;
+      });
+
+      setMonthlyReportReady({ month: targetMonth, year: targetYear, transactions: txsToArchive });
+    } else {
+      setMonthlyReportReady(null);
+    }
+  }, [validTransactions, isLoggedIn]);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLoggingIn) return;
+    setIsLoggingIn(true);
     try {
       const provider = new GoogleAuthProvider();
       await signInWithPopup(auth, provider);
@@ -355,6 +512,8 @@ export default function App() {
     } catch (err: any) {
       setToast({ message: err.message || 'Error al iniciar sesión', type: 'error' });
       setTimeout(() => setToast(null), 3000);
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
@@ -368,7 +527,7 @@ export default function App() {
   };
 
   const generateInsights = useCallback(async () => {
-    if (transactions.length === 0) return;
+    if (validTransactions.length === 0) return;
     setIsGeneratingInsights(true);
     try {
       const apiKey = process.env.GEMINI_API_KEY;
@@ -379,7 +538,7 @@ export default function App() {
       }
 
       const ai = new GoogleGenAI({ apiKey });
-      const recentTrans = transactions.slice(0, 20).map(t => `${t.date}: ${t.concept} (${t.type === 'income' ? '+' : '-'}${t.amount})`).join('\n');
+      const recentTrans = validTransactions.slice(0, 20).map(t => `${t.date}: ${t.concept} (${t.type === 'income' ? '+' : '-'}${t.amount})`).join('\n');
       
       const prompt = `Actúa como un consultor financiero experto para una tapicería. 
       Analiza estas transacciones recientes y da 3 consejos breves y accionables para mejorar la rentabilidad. 
@@ -400,7 +559,7 @@ export default function App() {
     } finally {
       setIsGeneratingInsights(false);
     }
-  }, [transactions]);
+  }, [validTransactions]);
 
   const sendMessageToMax = async (message: string) => {
     if (!auth.currentUser || !message.trim()) return;
@@ -419,8 +578,8 @@ export default function App() {
       const ai = new GoogleGenAI({ apiKey });
       
       // Build context
-      const recentTrans = transactions.slice(0, 20).map(t => `${t.date}: ${t.concept} (${t.type === 'income' ? '+' : '-'}${t.amount})`).join('\n');
-      const recentOrders = orders.slice(0, 10).map(o => `${o.work_type} - ${o.status} - Total: ${o.total}`).join('\n');
+      const recentTrans = validTransactions.slice(0, 20).map(t => `${t.date}: ${t.concept} (${t.type === 'income' ? '+' : '-'}${t.amount})`).join('\n');
+      const recentOrders = orders.filter(o => !o.is_canceled && !o.archived).slice(0, 10).map(o => `${o.work_type} - ${o.status} - Total: ${o.total}`).join('\n');
       
       const systemInstruction = `Eres Max, un asesor financiero experto y amigable para un negocio de tapicería.
       Tu objetivo es dar consejos financieros, analizar gastos y ayudar a mejorar la rentabilidad basándote en los datos del negocio.
@@ -434,7 +593,7 @@ export default function App() {
       
       Responde de manera concisa, útil y motivadora.`;
 
-      const recentMessages = chatMessages.slice(-10);
+      const recentMessages = chatMessages.slice(-20);
       const conversationHistory = recentMessages.map(msg => `${msg.role === 'model' ? 'Max' : 'Usuario'}: ${msg.text}`).join('\n\n');
       
       const prompt = `Historial de conversación:
@@ -463,6 +622,7 @@ Usuario: ${message}`;
       }
       
       setToast({ message: errorMessage, type: 'error' });
+      setTimeout(() => setToast(null), 6000);
     } finally {
       setIsSendingMessage(false);
     }
@@ -473,106 +633,6 @@ Usuario: ${message}`;
       generateInsights();
     }
   }, [isLoggedIn, transactions.length, insights, generateInsights]);
-
-  // --- Computed Data ---
-  const financeStats = useMemo(() => {
-    const income = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + Number(t.amount), 0);
-    const expense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + Number(t.amount), 0);
-    return { income, expense };
-  }, [transactions]);
-
-  const filteredOrders = useMemo(() => {
-    return orders.filter(o => {
-      const matchesSearch = o.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                            o.phone.includes(searchTerm);
-      let matchesStatus = false;
-      if (orderFilter === 'quotes') {
-        matchesStatus = !!o.is_quote;
-      } else if (orderFilter === 'completed') {
-        matchesStatus = !o.is_quote && o.status === 'completed';
-      } else {
-        matchesStatus = !o.is_quote && o.status === 'pending';
-      }
-      return matchesSearch && matchesStatus;
-    });
-  }, [orders, searchTerm, orderFilter]);
-
-  const capacityWarnings = useMemo(() => {
-    const pendingByWork = orders.filter(o => o.status === 'pending' && !o.is_quote).reduce((acc: any, o) => {
-      acc[o.work_type] = (acc[o.work_type] || 0) + 1;
-      return acc;
-    }, {});
-
-    return limits.map(l => ({
-      type: l.work_type,
-      current: pendingByWork[l.work_type] || 0,
-      limit: l.limit_val,
-      percentage: ((pendingByWork[l.work_type] || 0) / l.limit_val) * 100
-    })).filter(w => w.percentage >= 80);
-  }, [orders, limits]);
-
-  const getMonthlyData = useMemo(() => {
-    const months = Array.from({ length: 6 }, (_, i) => {
-      const date = subMonths(new Date(), i);
-      return {
-        name: format(date, 'MMM', { locale: es }),
-        month: date.getMonth(),
-        year: date.getFullYear(),
-        income: 0,
-        expense: 0
-      };
-    }).reverse();
-
-    transactions.forEach(t => {
-      const tDate = new Date(t.date);
-      const monthData = months.find(m => m.month === tDate.getMonth() && m.year === tDate.getFullYear());
-      if (monthData) {
-        if (t.type === 'income') monthData.income += Number(t.amount);
-        else monthData.expense += Number(t.amount);
-      }
-    });
-
-    return months;
-  }, [transactions]);
-
-  const getWeeklyData = useMemo(() => {
-    const start = startOfWeek(new Date(), { weekStartsOn: 1 }); // Monday
-    const end = endOfWeek(new Date(), { weekStartsOn: 1 }); // Sunday
-    
-    const days = eachDayOfInterval({ start, end }).map(date => ({
-      date,
-      name: format(date, 'EEEE', { locale: es }).substring(0, 3).toUpperCase(),
-      income: 0,
-      expense: 0
-    }));
-
-    transactions.forEach(t => {
-      const tDate = new Date(t.date);
-      const dayData = days.find(d => isSameDay(d.date, tDate));
-      if (dayData) {
-        if (t.type === 'income') dayData.income += Number(t.amount);
-        else dayData.expense += Number(t.amount);
-      }
-    });
-
-    return days;
-  }, [transactions]);
-
-  const currentWeekStats = useMemo(() => {
-    return getWeeklyData.reduce((acc, day) => {
-      acc.income += day.income;
-      acc.expense += day.expense;
-      return acc;
-    }, { income: 0, expense: 0 });
-  }, [getWeeklyData]);
-
-  const getCategoryData = useMemo(() => {
-    const cats: any = {};
-    transactions.filter(t => t.type === 'expense').forEach(t => {
-      cats[t.category] = (cats[t.category] || 0) + Number(t.amount);
-    });
-    return Object.entries(cats).map(([name, value]) => ({ name, value: Number(value) }));
-  }, [transactions]);
 
   // --- Handlers ---
   const handleDownloadAndSharePDF = async (order: Order) => {
@@ -787,7 +847,7 @@ Usuario: ${message}`;
     const isQuote = orderModalType === 'quote';
     const workType = data.work_type as string;
     
-    const executeOrderCreation = async () => {
+    const executeOrderCreation = async (hasWarning = false) => {
       try {
         const orderData = {
           ...data,
@@ -799,7 +859,7 @@ Usuario: ${message}`;
           is_quote: isQuote
         };
         
-        await addDoc(collection(db, `users/${auth.currentUser!.uid}/orders`), orderData);
+        const orderRef = await addDoc(collection(db, `users/${auth.currentUser!.uid}/orders`), orderData);
         
         if (!isQuote && advanceAmount > 0) {
           const txData = {
@@ -808,6 +868,7 @@ Usuario: ${message}`;
             concept: `Anticipo de pedido: ${data.customer_name}`,
             date: new Date().toISOString(),
             uid: auth.currentUser!.uid,
+            order_id: orderRef.id,
             category: 'Ventas'
           };
           await addDoc(collection(db, `users/${auth.currentUser!.uid}/transactions`), txData);
@@ -820,30 +881,32 @@ Usuario: ${message}`;
 
         setIsOrderModalOpen(false);
         setQuoteToConvert(null);
-        setToast({ message: orderModalType === 'quote' ? 'Cotización creada con éxito' : 'Pedido creado con éxito', type: 'success' });
-        setTimeout(() => setToast(null), 3000);
+        
+        if (hasWarning) {
+          setToast({ 
+            message: `Pedido creado. Aviso: Has superado el límite de capacidad para "${workType}".`, 
+            type: 'warning' 
+          });
+          setTimeout(() => setToast(null), 6000);
+        } else {
+          setToast({ message: orderModalType === 'quote' ? 'Cotización creada con éxito' : 'Pedido creado con éxito', type: 'success' });
+          setTimeout(() => setToast(null), 3000);
+        }
       } catch (err: any) {
         handleFirestoreError(err, OperationType.CREATE, `users/${auth.currentUser?.uid}/orders`);
       }
     };
 
     const limitObj = limits.find(l => l.work_type === workType);
+    let hasWarning = false;
     if (limitObj && !isQuote) {
-      const currentPending = orders.filter(o => o.status === 'pending' && !o.is_quote && o.work_type === workType).length;
+      const currentPending = orders.filter(o => o.status === 'pending' && !o.is_quote && !o.is_canceled && !o.archived && o.work_type === workType).length;
       if (currentPending >= limitObj.limit_val) {
-        showConfirmation({
-          title: 'Límite de Capacidad Alcanzado',
-          message: `Has alcanzado el límite de capacidad para trabajos de tipo "${workType}" (${limitObj.limit_val} pendientes). ¿Deseas registrar este pedido de todos modos?`,
-          confirmText: 'Sí, registrar',
-          cancelText: 'Cancelar',
-          type: 'warning',
-          onConfirm: executeOrderCreation
-        });
-        return;
+        hasWarning = true;
       }
     }
 
-    executeOrderCreation();
+    executeOrderCreation(hasWarning);
   };
 
   const handleCreateTransaction = async (e: React.FormEvent) => {
@@ -889,6 +952,7 @@ Usuario: ${message}`;
           concept: `Liquidación de pedido: ${order.customer_name}`,
           date: new Date().toISOString(),
           uid: auth.currentUser.uid,
+          order_id: id,
           category: 'Ventas'
         };
         await addDoc(collection(db, `users/${auth.currentUser.uid}/transactions`), txData);
@@ -904,16 +968,27 @@ Usuario: ${message}`;
 
   const handleDeleteOrder = async () => {
     if (!orderToDelete || !auth.currentUser) return;
-    // Password check is skipped in Firebase version for simplicity, or could be implemented with reauthenticateWithCredential
     try {
-      await deleteDoc(doc(db, `users/${auth.currentUser.uid}/orders`, orderToDelete));
+      // Mark order as canceled
+      await updateDoc(doc(db, `users/${auth.currentUser.uid}/orders`, orderToDelete), {
+        is_canceled: true
+      });
+      
+      // Find all transactions related to this order and mark them as canceled
+      const relatedTxs = transactions.filter(t => t.order_id === orderToDelete);
+      for (const tx of relatedTxs) {
+        await updateDoc(doc(db, `users/${auth.currentUser.uid}/transactions`, tx.id), {
+          is_canceled: true
+        });
+      }
+
       setOrderToDelete(null);
       setPasswordPrompt({ isOpen: false, action: '', passwordInput: '', newPasswordInput: '' });
       setSelectedOrderDetails(null);
-      setToast({ message: 'Pedido eliminado', type: 'success' });
+      setToast({ message: 'Pedido cancelado', type: 'success' });
       setTimeout(() => setToast(null), 3000);
     } catch (err: any) {
-      handleFirestoreError(err, OperationType.DELETE, `users/${auth.currentUser?.uid}/orders/${orderToDelete}`);
+      handleFirestoreError(err, OperationType.UPDATE, `users/${auth.currentUser?.uid}/orders/${orderToDelete}`);
     }
   };
 
@@ -1019,6 +1094,154 @@ Usuario: ${message}`;
     setPasswordPrompt({ isOpen: false, action: '', passwordInput: '', newPasswordInput: '' });
   };
 
+  const handleEditOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingOrder || !auth.currentUser) return;
+    
+    const formData = new FormData(e.target as HTMLFormElement);
+    const data = Object.fromEntries(formData.entries());
+    
+    try {
+      const newTotal = Number(data.total);
+      const newAdvance = Number(data.advance);
+      
+      const orderRef = doc(db, `users/${auth.currentUser.uid}/orders`, editingOrder.id);
+      
+      await updateDoc(orderRef, {
+        customer_name: data.customer_name,
+        phone: data.phone,
+        address: data.address,
+        delivery_date: data.delivery_date,
+        material: data.material,
+        work_type: data.work_type,
+        description: data.description,
+        total: newTotal,
+        advance: newAdvance
+      });
+      
+      // If advance changed, try to update the initial transaction
+      if (newAdvance !== editingOrder.advance) {
+        const relatedTxs = transactions.filter(t => t.order_id === editingOrder.id && t.type === 'income');
+        if (relatedTxs.length > 0) {
+          // Assume the first transaction is the advance
+          const firstTx = relatedTxs.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())[0];
+          await updateDoc(doc(db, `users/${auth.currentUser.uid}/transactions`, firstTx.id), {
+            amount: newAdvance
+          });
+        } else if (newAdvance > 0) {
+          // If no transaction exists but there is an advance now, create one
+          const txData = {
+            type: 'income',
+            amount: newAdvance,
+            concept: `Anticipo de pedido: ${data.customer_name}`,
+            date: new Date().toISOString(),
+            uid: auth.currentUser.uid,
+            order_id: editingOrder.id,
+            category: 'Ventas'
+          };
+          await addDoc(collection(db, `users/${auth.currentUser.uid}/transactions`), txData);
+        }
+      }
+
+      setIsEditModalOpen(false);
+      setEditingOrder(null);
+      setSelectedOrderDetails(null); // Close details view if open to refresh
+      setToast({ message: 'Pedido actualizado con éxito', type: 'success' });
+      setTimeout(() => setToast(null), 3000);
+    } catch (err: any) {
+      handleFirestoreError(err, OperationType.UPDATE, `users/${auth.currentUser?.uid}/orders/${editingOrder.id}`);
+    }
+  };
+
+  const handleArchiveMonth = async () => {
+    if (!monthlyReportReady || !auth.currentUser) return;
+    
+    try {
+      const { month, year, transactions: txsToArchive } = monthlyReportReady;
+      const monthName = format(new Date(year, month), 'MMMM', { locale: es });
+      
+      // 1. Generate Excel
+      const ws = XLSX.utils.json_to_sheet(txsToArchive.map(t => ({
+        Fecha: format(new Date(t.date), 'dd/MM/yyyy HH:mm'),
+        Concepto: t.concept,
+        Categoría: t.category,
+        Tipo: t.type === 'income' ? 'Ingreso' : 'Egreso',
+        Monto: t.amount,
+        ID_Pedido: t.order_id || 'N/A'
+      })));
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Transacciones');
+      XLSX.writeFile(wb, `Respaldo_Transacciones_${monthName}_${year}.xlsx`);
+
+      // 2. Generate PDF Report
+      const docPdf = new jsPDF();
+      
+      // Header
+      docPdf.setFontSize(24);
+      docPdf.setTextColor(40, 40, 40);
+      docPdf.text(`Informe Mensual - ${monthName.toUpperCase()} ${year}`, 14, 20);
+      
+      docPdf.setFontSize(12);
+      docPdf.setTextColor(100, 100, 100);
+      docPdf.text(`Generado el: ${format(new Date(), 'dd/MM/yyyy HH:mm')}`, 14, 30);
+      
+      // Summary Stats
+      const totalIncome = txsToArchive.filter(t => t.type === 'income').reduce((sum, t) => sum + Number(t.amount), 0);
+      const totalExpense = txsToArchive.filter(t => t.type === 'expense').reduce((sum, t) => sum + Number(t.amount), 0);
+      const netIncome = totalIncome - totalExpense;
+      
+      docPdf.setFontSize(14);
+      docPdf.setTextColor(0, 0, 0);
+      docPdf.text('Resumen Financiero', 14, 45);
+      
+      autoTable(docPdf, {
+        startY: 50,
+        head: [['Concepto', 'Monto']],
+        body: [
+          ['Ingresos Totales', `$${totalIncome.toLocaleString('es-MX')}`],
+          ['Egresos Totales', `$${totalExpense.toLocaleString('es-MX')}`],
+          ['Balance Neto', `$${netIncome.toLocaleString('es-MX')}`],
+        ],
+        theme: 'grid',
+        headStyles: { fillColor: [59, 130, 246] },
+        styles: { fontSize: 12 }
+      });
+
+      // Category Breakdown
+      const cats: any = {};
+      txsToArchive.filter(t => t.type === 'expense').forEach(t => {
+        cats[t.category] = (cats[t.category] || 0) + Number(t.amount);
+      });
+      const catData = Object.entries(cats).map(([name, value]) => [name, `$${Number(value).toLocaleString('es-MX')}`]);
+      
+      if (catData.length > 0) {
+        docPdf.text('Desglose de Egresos por Categoría', 14, (docPdf as any).lastAutoTable.finalY + 15);
+        autoTable(docPdf, {
+          startY: (docPdf as any).lastAutoTable.finalY + 20,
+          head: [['Categoría', 'Total']],
+          body: catData,
+          theme: 'striped',
+          headStyles: { fillColor: [239, 68, 68] },
+        });
+      }
+
+      docPdf.save(`Reporte_Financiero_${monthName}_${year}.pdf`);
+
+      // 3. Archive transactions in Firestore
+      for (const tx of txsToArchive) {
+        await updateDoc(doc(db, `users/${auth.currentUser.uid}/transactions`, tx.id), {
+          archived: true
+        });
+      }
+
+      setToast({ message: `Reportes de ${monthName} generados y archivados con éxito.`, type: 'success' });
+      setTimeout(() => setToast(null), 3000);
+      setMonthlyReportReady(null);
+    } catch (err: any) {
+      handleFirestoreError(err, OperationType.UPDATE, `users/${auth.currentUser?.uid}/transactions`);
+    }
+  };
+
   const handleExportData = () => {
     // Export orders to CSV
     const headers = ['ID', 'Cliente', 'Teléfono', 'Dirección', 'Registro', 'Entrega', 'Material', 'Tipo', 'Total', 'Anticipo', 'Estado'];
@@ -1080,16 +1303,20 @@ Usuario: ${message}`;
           </div>
 
           <div className="space-y-4">
-            <button onClick={handleLogin} className="btn-primary w-full py-4 text-lg flex items-center justify-center gap-2">
-              <svg viewBox="0 0 24 24" width="24" height="24" xmlns="http://www.w3.org/2000/svg">
-                <g transform="matrix(1, 0, 0, 1, 27.009001, -39.238998)">
-                  <path fill="#4285F4" d="M -3.264 51.509 C -3.264 50.719 -3.334 49.969 -3.454 49.239 L -14.754 49.239 L -14.754 53.749 L -8.284 53.749 C -8.574 55.229 -9.424 56.479 -10.684 57.329 L -10.684 60.329 L -6.824 60.329 C -4.564 58.239 -3.264 55.159 -3.264 51.509 Z"/>
-                  <path fill="#34A853" d="M -14.754 63.239 C -11.514 63.239 -8.804 62.159 -6.824 60.329 L -10.684 57.329 C -11.764 58.049 -13.134 58.489 -14.754 58.489 C -17.884 58.489 -20.534 56.379 -21.484 53.529 L -25.464 53.529 L -25.464 56.619 C -23.494 60.539 -19.444 63.239 -14.754 63.239 Z"/>
-                  <path fill="#FBBC05" d="M -21.484 53.529 C -21.734 52.809 -21.864 52.039 -21.864 51.239 C -21.864 50.439 -21.724 49.669 -21.484 48.949 L -21.484 45.859 L -25.464 45.859 C -26.284 47.479 -26.754 49.299 -26.754 51.239 C -26.754 53.179 -26.284 54.999 -25.464 56.619 L -21.484 53.529 Z"/>
-                  <path fill="#EA4335" d="M -14.754 43.989 C -12.984 43.989 -11.404 44.599 -10.154 45.789 L -6.734 42.369 C -8.804 40.429 -11.514 39.239 -14.754 39.239 C -19.444 39.239 -23.494 41.939 -25.464 45.859 L -21.484 48.949 C -20.534 46.099 -17.884 43.989 -14.754 43.989 Z"/>
-                </g>
-              </svg>
-              Continuar con Google
+            <button onClick={handleLogin} disabled={isLoggingIn} className="btn-primary w-full py-4 text-lg flex items-center justify-center gap-2 disabled:opacity-50">
+              {isLoggingIn ? (
+                <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+              ) : (
+                <svg viewBox="0 0 24 24" width="24" height="24" xmlns="http://www.w3.org/2000/svg">
+                  <g transform="matrix(1, 0, 0, 1, 27.009001, -39.238998)">
+                    <path fill="#4285F4" d="M -3.264 51.509 C -3.264 50.719 -3.334 49.969 -3.454 49.239 L -14.754 49.239 L -14.754 53.749 L -8.284 53.749 C -8.574 55.229 -9.424 56.479 -10.684 57.329 L -10.684 60.329 L -6.824 60.329 C -4.564 58.239 -3.264 55.159 -3.264 51.509 Z"/>
+                    <path fill="#34A853" d="M -14.754 63.239 C -11.514 63.239 -8.804 62.159 -6.824 60.329 L -10.684 57.329 C -11.764 58.049 -13.134 58.489 -14.754 58.489 C -17.884 58.489 -20.534 56.379 -21.484 53.529 L -25.464 53.529 L -25.464 56.619 C -23.494 60.539 -19.444 63.239 -14.754 63.239 Z"/>
+                    <path fill="#FBBC05" d="M -21.484 53.529 C -21.734 52.809 -21.864 52.039 -21.864 51.239 C -21.864 50.439 -21.724 49.669 -21.484 48.949 L -21.484 45.859 L -25.464 45.859 C -26.284 47.479 -26.754 49.299 -26.754 51.239 C -26.754 53.179 -26.284 54.999 -25.464 56.619 L -21.484 53.529 Z"/>
+                    <path fill="#EA4335" d="M -14.754 43.989 C -12.984 43.989 -11.404 44.599 -10.154 45.789 L -6.734 42.369 C -8.804 40.429 -11.514 39.239 -14.754 39.239 C -19.444 39.239 -23.494 41.939 -25.464 45.859 L -21.484 48.949 C -20.534 46.099 -17.884 43.989 -14.754 43.989 Z"/>
+                  </g>
+                </svg>
+              )}
+              {isLoggingIn ? 'Iniciando sesión...' : 'Continuar con Google'}
             </button>
           </div>
           
@@ -1241,7 +1468,7 @@ Usuario: ${message}`;
                     getMonthlyData={getMonthlyData}
                     getWeeklyData={getWeeklyData}
                     currentWeekStats={currentWeekStats}
-                    transactions={transactions}
+                    transactions={visibleTransactions}
                     formatCurrency={(v: number) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(v)}
                     setTransactionToDelete={async (id: string) => {
                       showConfirmation({
@@ -1608,6 +1835,140 @@ Usuario: ${message}`;
           </motion.div>
         )}
 
+        {/* Edit Order Modal */}
+        {isEditModalOpen && editingOrder && (
+          <motion.div 
+            key="edit-modal-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 20 }}
+              className="bg-[#1A1A1A] rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl border border-white/10"
+            >
+              <div className="p-6 border-b border-white/10 flex justify-between items-center">
+                <h3 className="text-xl font-bold">Editar {editingOrder.is_quote ? 'Cotización' : 'Pedido'}</h3>
+                <button onClick={() => {
+                  setIsEditModalOpen(false);
+                  setEditingOrder(null);
+                }} className="p-2 rounded-full hover:bg-white/10 transition-colors">
+                  <X size={24} />
+                </button>
+              </div>
+              <form 
+                onSubmit={handleEditOrder} 
+                className="p-6 space-y-6 max-h-[70vh] overflow-y-auto custom-scrollbar"
+              >
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-500 uppercase">Cliente</label>
+                    <input name="customer_name" required className="input-field w-full" defaultValue={editingOrder.customer_name} />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-500 uppercase">Teléfono</label>
+                    <input name="phone" type="tel" inputMode="numeric" pattern="[0-9]*" required className="input-field w-full" defaultValue={editingOrder.phone} />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-gray-500 uppercase">Dirección</label>
+                  <input name="address" className="input-field w-full" defaultValue={editingOrder.address} />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-500 uppercase">Fecha de Entrega</label>
+                    <input name="delivery_date" type="date" required className="input-field w-full" defaultValue={editingOrder.delivery_date} />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-500 uppercase">Material</label>
+                    <input name="material" required className="input-field w-full" defaultValue={editingOrder.material} />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-500 uppercase">Tipo de Trabajo</label>
+                    <select name="work_type" required className="input-field w-full" defaultValue={editingOrder.work_type}>
+                      <option value="Muebles">Muebles</option>
+                      <option value="Automotriz">Automotriz</option>
+                      <option value="Cortinas">Cortinas</option>
+                      <option value="Reparación">Reparación</option>
+                      <option value="Otro">Otro</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-gray-500 uppercase">Descripción</label>
+                  <textarea name="description" className="input-field w-full min-h-[100px]" defaultValue={editingOrder.description} />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-500 uppercase">Total</label>
+                    <input name="total" type="number" inputMode="decimal" required className="input-field w-full" defaultValue={editingOrder.total} />
+                  </div>
+                  {!editingOrder.is_quote ? (
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-gray-500 uppercase">Anticipo</label>
+                      <input name="advance" type="number" inputMode="decimal" required className="input-field w-full" defaultValue={editingOrder.advance} />
+                    </div>
+                  ) : (
+                    <input name="advance" type="hidden" value="0" />
+                  )}
+                </div>
+                <button type="submit" className="btn-primary w-full py-4 text-lg">Guardar Cambios</button>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {/* Monthly Report Ready Modal */}
+        {monthlyReportReady && (
+          <motion.div 
+            key="monthly-report-modal-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 20 }}
+              className="bg-[#1A1A1A] rounded-3xl w-full max-w-md overflow-hidden shadow-2xl border border-white/10"
+            >
+              <div className="p-6 border-b border-white/10 flex justify-between items-center bg-gradient-to-r from-primary/20 to-transparent">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg bg-primary/20 text-primary">
+                    <Calendar size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold">Informe Mensual Listo</h3>
+                  </div>
+                </div>
+                <button onClick={() => setMonthlyReportReady(null)} className="p-2 rounded-full hover:bg-white/10 transition-colors">
+                  <X size={24} />
+                </button>
+              </div>
+              <div className="p-6 space-y-6">
+                <p className="text-gray-300">
+                  El historial de transacciones de <span className="font-bold text-white">{format(new Date(monthlyReportReady.year, monthlyReportReady.month), 'MMMM yyyy', { locale: es })}</span> está listo para ser archivado.
+                </p>
+                <p className="text-sm text-gray-400">
+                  Al archivar, se descargará un archivo Excel con todas las transacciones del mes y se limpiará el historial de la aplicación para dar paso al nuevo mes.
+                </p>
+                <div className="flex flex-col gap-3">
+                  <button onClick={handleArchiveMonth} className="btn-primary w-full py-3">
+                    Descargar y Archivar
+                  </button>
+                  <button onClick={() => setMonthlyReportReady(null)} className="w-full py-3 rounded-xl font-bold bg-white/5 hover:bg-white/10 transition-colors">
+                    Recordarme más tarde
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
         {/* Transaction Modal */}
         {isTransactionModalOpen && (
           <motion.div 
@@ -1716,9 +2077,17 @@ Usuario: ${message}`;
                     <h3 className="text-xl font-bold">{selectedOrderDetails.is_quote ? 'Resumen de Cotización' : 'Resumen del Pedido'}</h3>
                   </div>
                 </div>
-                <button onClick={() => setSelectedOrderDetails(null)} className="p-2 rounded-full hover:bg-white/10 transition-colors">
-                  <X size={24} />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => {
+                    setEditingOrder(selectedOrderDetails);
+                    setIsEditModalOpen(true);
+                  }} className="p-2 rounded-full hover:bg-white/10 transition-colors" title="Editar">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+                  </button>
+                  <button onClick={() => setSelectedOrderDetails(null)} className="p-2 rounded-full hover:bg-white/10 transition-colors">
+                    <X size={24} />
+                  </button>
+                </div>
               </div>
               
               <div className="p-6 space-y-8 overflow-y-auto max-h-[70vh] custom-scrollbar">
@@ -2057,7 +2426,9 @@ Usuario: ${message}`;
             exit={{ opacity: 0, y: 50 }}
             className={cn(
               "fixed bottom-8 left-1/2 -translate-x-1/2 z-[100] px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border",
-              toast.type === 'success' ? "bg-emerald-500 border-emerald-400 text-white" : "bg-rose-500 border-rose-400 text-white"
+              toast.type === 'success' ? "bg-emerald-500 border-emerald-400 text-white" : 
+              toast.type === 'warning' ? "bg-amber-500 border-amber-400 text-white" : 
+              "bg-rose-500 border-rose-400 text-white"
             )}
           >
             {toast.type === 'success' ? <CheckCircle2 size={20} /> : <AlertTriangle size={20} />}

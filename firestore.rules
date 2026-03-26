@@ -110,7 +110,7 @@ service cloud.firestore {
     }
 
     function isValidOrder() {
-      let allowedKeys = ['uid', 'customer_name', 'phone', 'address', 'delivery_date', 'work_type', 'material', 'description', 'total', 'advance', 'status', 'registration_date', 'is_quote'];
+      let allowedKeys = ['uid', 'customer_name', 'phone', 'address', 'delivery_date', 'work_type', 'material', 'description', 'total', 'advance', 'status', 'registration_date', 'is_quote', 'is_canceled', 'archived'];
       return request.resource.data.keys().hasOnly(allowedKeys) &&
              hasRequiredFields(['uid', 'customer_name', 'phone', 'delivery_date', 'work_type', 'total', 'advance', 'status', 'registration_date']) &&
              request.resource.data.uid == request.auth.uid &&
@@ -125,11 +125,13 @@ service cloud.firestore {
              request.resource.data.advance is number && request.resource.data.advance >= 0 &&
              request.resource.data.status in ['pending', 'completed'] &&
              validStringLength('registration_date', 1, 50) &&
-             (!( 'is_quote' in request.resource.data ) || request.resource.data.is_quote is bool);
+             (!( 'is_quote' in request.resource.data ) || request.resource.data.is_quote is bool) &&
+             (!( 'is_canceled' in request.resource.data ) || request.resource.data.is_canceled is bool) &&
+             (!( 'archived' in request.resource.data ) || request.resource.data.archived is bool);
     }
 
     function isValidTransaction() {
-      let allowedKeys = ['uid', 'date', 'amount', 'type', 'category', 'concept', 'order_id'];
+      let allowedKeys = ['uid', 'date', 'amount', 'type', 'category', 'concept', 'order_id', 'is_canceled', 'archived'];
       return request.resource.data.keys().hasOnly(allowedKeys) &&
              hasRequiredFields(['uid', 'date', 'amount', 'type', 'category', 'concept']) &&
              request.resource.data.uid == request.auth.uid &&
@@ -138,7 +140,9 @@ service cloud.firestore {
              request.resource.data.type in ['income', 'expense'] &&
              validStringLength('category', 1, 50) &&
              validStringLength('concept', 1, 200) &&
-             (!( 'order_id' in request.resource.data ) || request.resource.data.order_id is string);
+             (!( 'order_id' in request.resource.data ) || request.resource.data.order_id is string) &&
+             (!( 'is_canceled' in request.resource.data ) || request.resource.data.is_canceled is bool) &&
+             (!( 'archived' in request.resource.data ) || request.resource.data.archived is bool);
     }
 
     function isValidLimit() {
