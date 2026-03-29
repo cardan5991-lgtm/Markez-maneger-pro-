@@ -30,8 +30,7 @@ import {
   Check,
   Calendar,
   Sparkles,
-  Lock,
-  X
+  Lock
 } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { 
@@ -49,7 +48,7 @@ import {
   Cell
 } from 'recharts';
 import { cn } from '../lib/utils';
-import { format } from 'date-fns';
+import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 // --- Types ---
@@ -57,17 +56,21 @@ type WorkType = 'Sala' | 'Silla' | 'Asiento Carro' | 'Camion';
 type TransactionType = 'income' | 'expense';
 
 interface Order {
-  id: number;
+  id: string;
   customer_name: string;
   phone: string;
   address: string;
   registration_date: string;
   delivery_date: string;
   material: string;
-  work_type: WorkType;
+  work_type: string;
+  description?: string;
   total: number;
   advance: number;
   status: 'pending' | 'completed' | 'cancelled';
+  is_quote?: boolean;
+  is_canceled?: boolean;
+  archived?: boolean;
 }
 
 interface Transaction {
@@ -91,7 +94,16 @@ const formatCurrency = (amount: number) => {
 
 const safeFormatDate = (dateString: string, formatStr: string, options?: any) => {
   try {
-    const date = new Date(dateString);
+    if (!dateString) return 'Fecha inválida';
+    
+    let date: Date;
+    if (typeof dateString === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+      const [year, month, day] = dateString.split('-');
+      date = new Date(Number(year), Number(month) - 1, Number(day));
+    } else {
+      date = new Date(dateString);
+    }
+    
     if (isNaN(date.getTime())) {
       return 'Fecha inválida';
     }
@@ -371,7 +383,14 @@ export const DashboardView = React.memo(({
             <button onClick={() => handleTabChange('orders')} className="text-primary text-xs font-bold uppercase tracking-wider hover:underline">Ver todos</button>
           </div>
           <div className="space-y-4">
-            {orders.filter((o: any) => o.status === 'pending' && !o.is_quote && !o.is_canceled && !o.archived).slice(0, 5).map((order: any, idx: number) => (
+            {orders
+              .filter((o: any) => o.status === 'pending' && !o.is_quote && !o.is_canceled && !o.archived)
+              .sort((a: any, b: any) => {
+                const diff = new Date(a.delivery_date || 0).getTime() - new Date(b.delivery_date || 0).getTime();
+                return isNaN(diff) ? 0 : diff;
+              })
+              .slice(0, 5)
+              .map((order: any, idx: number) => (
               <div 
                 key={`pending-${order.id}-${idx}`} 
                 onClick={() => setSelectedOrderDetails(order)}
@@ -1179,3 +1198,196 @@ export const SettingsView = React.memo(({
 });
 
 SettingsView.displayName = 'SettingsView';
+
+export const CalendarView = React.memo(({ orders }: { orders: Order[] }) => {
+  const [currentMonth, setCurrentMonth] = React.useState(new Date());
+  const [selectedDate, setSelectedDate] = React.useState<Date | null>(null);
+
+  const nextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
+  const prevMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
+
+  const monthStart = startOfMonth(currentMonth);
+  const monthEnd = endOfMonth(monthStart);
+  const startDate = startOfWeek(monthStart, { weekStartsOn: 1 });
+  const endDate = endOfWeek(monthEnd, { weekStartsOn: 1 });
+
+  const dateFormat = "MMMM yyyy";
+  const days = eachDayOfInterval({ start: startDate, end: endDate });
+
+  const weekDays = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+
+  const getOrdersForDay = (day: Date) => {
+    return orders.filter(o => {
+      if (o.is_quote || o.is_canceled || o.archived) return false;
+      try {
+        let orderDate: Date;
+        if (typeof o.delivery_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(o.delivery_date)) {
+          const [year, month, d] = o.delivery_date.split('-');
+          orderDate = new Date(Number(year), Number(month) - 1, Number(d));
+        } else {
+          orderDate = new Date(o.delivery_date);
+        }
+        return isSameDay(orderDate, day);
+      } catch (e) {
+        return false;
+      }
+    });
+  };
+
+  const selectedOrders = selectedDate ? getOrdersForDay(selectedDate) : [];
+
+  return (
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-3xl font-black tracking-tighter text-white">Mi Calendario</h2>
+          <p className="text-gray-400 mt-1">Organiza tus entregas de trabajo</p>
+        </div>
+      </div>
+
+      <div className="card p-6">
+        <div className="flex justify-between items-center mb-6">
+          <button onClick={prevMonth} className="p-2 hover:bg-white/5 rounded-lg transition-colors">
+            <ChevronRight className="rotate-180" />
+          </button>
+          <h3 className="text-xl font-bold capitalize">{format(currentMonth, dateFormat, { locale: es })}</h3>
+          <button onClick={nextMonth} className="p-2 hover:bg-white/5 rounded-lg transition-colors">
+            <ChevronRight />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-7 gap-2 mb-2">
+          {weekDays.map(day => (
+            <div key={day} className="text-center text-sm font-bold text-gray-500 uppercase tracking-wider py-2">
+              {day}
+            </div>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-7 gap-2">
+          {days.map((day, i) => {
+            const dayOrders = getOrdersForDay(day);
+            const hasOrders = dayOrders.length > 0;
+            const allCompleted = hasOrders && dayOrders.every(o => o.status === 'completed');
+            const isCurrentMonth = isSameMonth(day, monthStart);
+
+            return (
+              <div
+                key={day.toString()}
+                onClick={() => hasOrders && setSelectedDate(day)}
+                className={cn(
+                  "min-h-[80px] p-2 rounded-xl border transition-all duration-300 relative",
+                  !isCurrentMonth ? "opacity-30 border-transparent bg-white/5" : "border-white/10 bg-[#1A1A1A]",
+                  hasOrders ? "cursor-pointer hover:shadow-lg" : "",
+                  hasOrders && !allCompleted ? "hover:shadow-rose-500/20" : "",
+                  hasOrders && allCompleted ? "hover:shadow-emerald-500/20" : "",
+                  hasOrders && isCurrentMonth && !allCompleted ? "border-rose-500/50 bg-rose-500/10" : "",
+                  hasOrders && isCurrentMonth && allCompleted ? "border-emerald-500/50 bg-emerald-500/10" : ""
+                )}
+              >
+                <div className="flex justify-between items-start">
+                  <span className={cn(
+                    "text-sm font-bold",
+                    hasOrders && !allCompleted ? "text-rose-500" : "",
+                    hasOrders && allCompleted ? "text-emerald-500" : "",
+                    !hasOrders ? "text-gray-400" : ""
+                  )}>
+                    {format(day, 'd')}
+                  </span>
+                  {hasOrders && (
+                    <div className={cn(
+                      "w-2 h-2 rounded-full",
+                      !allCompleted ? "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)]" : "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]"
+                    )} />
+                  )}
+                </div>
+                {hasOrders && (
+                  <div className="mt-2 flex flex-col gap-1">
+                    {dayOrders.slice(0, 2).map((order, idx) => (
+                      <div key={idx} className={cn(
+                        "text-[10px] truncate px-1.5 py-0.5 rounded",
+                        order.status === 'completed' ? "bg-emerald-500/20 text-emerald-400" : "bg-rose-500/20 text-rose-400"
+                      )}>
+                        {order.customer_name}
+                      </div>
+                    ))}
+                    {dayOrders.length > 2 && (
+                      <div className={cn(
+                        "text-[10px] font-bold",
+                        !allCompleted ? "text-rose-500/70" : "text-emerald-500/70"
+                      )}>
+                        +{dayOrders.length - 2} más
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <AnimatePresence>
+        {selectedDate && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+            onClick={() => setSelectedDate(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-[#141414] border border-white/10 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+            >
+              <div className="p-6 border-b border-white/10 flex justify-between items-center bg-white/5">
+                <div>
+                  <h3 className="text-xl font-black text-white">Entregas del Día</h3>
+                  <p className="text-sm text-gray-400 capitalize">{format(selectedDate, "EEEE, d 'de' MMMM", { locale: es })}</p>
+                </div>
+                <button
+                  onClick={() => setSelectedDate(null)}
+                  className="p-2 hover:bg-white/10 rounded-xl transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              
+              <div className="p-6 max-h-[60vh] overflow-y-auto custom-scrollbar space-y-4">
+                {selectedOrders.length === 0 ? (
+                  <p className="text-gray-500 text-center py-4">No hay entregas para este día.</p>
+                ) : (
+                  selectedOrders.map(order => (
+                    <div key={order.id} className="p-4 rounded-xl bg-white/5 border border-white/10 hover:border-primary/30 transition-colors">
+                      <div className="flex justify-between items-start mb-2">
+                        <h4 className="font-bold text-white">{order.customer_name}</h4>
+                        <span className={cn(
+                          "text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider",
+                          order.status === 'completed' ? "bg-emerald-500/10 text-emerald-500" :
+                          order.status === 'cancelled' ? "bg-rose-500/10 text-rose-500" :
+                          "bg-amber-500/10 text-amber-500"
+                        )}>
+                          {order.status === 'completed' ? 'Completado' : order.status === 'cancelled' ? 'Cancelado' : 'Pendiente'}
+                        </span>
+                      </div>
+                      <div className="space-y-1 text-sm text-gray-400">
+                        <p><span className="text-gray-500">Trabajo:</span> {order.work_type}</p>
+                        <p><span className="text-gray-500">Material:</span> {order.material}</p>
+                        {order.phone && <p><span className="text-gray-500">Teléfono:</span> {order.phone}</p>}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+});
+
+CalendarView.displayName = 'CalendarView';

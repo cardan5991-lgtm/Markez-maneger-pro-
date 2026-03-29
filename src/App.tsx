@@ -27,8 +27,7 @@ import {
   Loader2,
   Calendar,
   MessageSquare,
-  Send,
-  X
+  Send
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
@@ -46,12 +45,13 @@ import {
   DashboardView, 
   OrdersView, 
   FinancesView, 
-  SettingsView 
+  SettingsView,
+  CalendarView
 } from './components/Views';
 import { PostCreatorModal } from './components/PostCreatorModal';
 
 // --- Types ---
-type Tab = 'dashboard' | 'orders' | 'finances' | 'settings';
+type Tab = 'dashboard' | 'orders' | 'finances' | 'settings' | 'calendar';
 
 interface Order {
   id: string;
@@ -94,7 +94,16 @@ interface Profile {
 
 const safeFormatDate = (dateString: string, formatStr: string, options?: any) => {
   try {
-    const date = new Date(dateString);
+    if (!dateString) return 'Fecha inválida';
+    
+    let date: Date;
+    if (typeof dateString === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+      const [year, month, day] = dateString.split('-');
+      date = new Date(Number(year), Number(month) - 1, Number(day));
+    } else {
+      date = new Date(dateString);
+    }
+    
     if (isNaN(date.getTime())) {
       return 'Fecha inválida';
     }
@@ -168,6 +177,7 @@ export default function App() {
   }, [isChatModalOpen]);
 
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const isLoggingInRef = useRef(false);
 
   useEffect(() => {
     const handleOpenChat = () => {
@@ -358,10 +368,16 @@ export default function App() {
   }, [validTransactions]);
 
   const filteredOrders = useMemo(() => {
-    return orders.filter(o => {
+    const filtered = orders.filter(o => {
       if (o.is_canceled || o.archived) return false;
-      const matchesSearch = o.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                            o.phone.includes(searchTerm);
+      
+      const customerName = o.customer_name || '';
+      const phone = o.phone || '';
+      const search = (searchTerm || '').toLowerCase();
+      
+      const matchesSearch = customerName.toLowerCase().includes(search) || 
+                            phone.includes(search);
+                            
       let matchesStatus = false;
       if (orderFilter === 'quotes') {
         matchesStatus = !!o.is_quote;
@@ -371,6 +387,18 @@ export default function App() {
         matchesStatus = !o.is_quote && o.status === 'pending';
       }
       return matchesSearch && matchesStatus;
+    });
+
+    return filtered.sort((a, b) => {
+      const dateA = new Date(a.delivery_date || 0).getTime();
+      const dateB = new Date(b.delivery_date || 0).getTime();
+      const diff = dateA - dateB;
+      if (isNaN(diff)) return 0;
+      
+      if (orderFilter === 'completed') {
+        return -diff; // Descending for completed
+      }
+      return diff; // Ascending for pending and quotes
     });
   }, [orders, searchTerm, orderFilter]);
 
@@ -488,10 +516,14 @@ export default function App() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isLoggingIn) return;
+    if (isLoggingInRef.current) return;
+    
+    isLoggingInRef.current = true;
     setIsLoggingIn(true);
+    
     try {
       const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
       await signInWithPopup(auth, provider);
       // Ensure user document exists
       if (auth.currentUser) {
@@ -510,9 +542,17 @@ export default function App() {
         }
       }
     } catch (err: any) {
-      setToast({ message: err.message || 'Error al iniciar sesión', type: 'error' });
-      setTimeout(() => setToast(null), 3000);
+      console.error("Login error:", err);
+      let errorMessage = 'Error al iniciar sesión';
+      if (err.code === 'auth/popup-blocked') {
+        errorMessage = 'Por favor, permite las ventanas emergentes (popups) para iniciar sesión.';
+      } else if (err.message && err.message.includes('INTERNAL ASSERTION FAILED')) {
+        errorMessage = 'Error interno de autenticación. Por favor, recarga la página e intenta de nuevo.';
+      }
+      setToast({ message: errorMessage, type: 'error' });
+      setTimeout(() => setToast(null), 5000);
     } finally {
+      isLoggingInRef.current = false;
       setIsLoggingIn(false);
     }
   };
@@ -633,6 +673,92 @@ Usuario: ${message}`;
       generateInsights();
     }
   }, [isLoggedIn, transactions.length, insights, generateInsights]);
+
+  // --- Notifications ---
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    // Request permission if not already granted or denied
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+
+    const checkAndSendDailyNotification = () => {
+      if (!('Notification' in window) || Notification.permission !== 'granted') return;
+
+      const now = new Date();
+      if (now.getHours() >= 10) {
+        const todayStr = format(now, 'yyyy-MM-dd');
+        const lastNotified = localStorage.getItem('lastDailyNotification');
+
+        if (lastNotified !== todayStr) {
+          const todayOrders = orders.filter(o => {
+            if (o.status !== 'pending' || o.is_quote || o.is_canceled || o.archived) return false;
+            try {
+              let orderDate: Date;
+              if (typeof o.delivery_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(o.delivery_date)) {
+                const [year, month, d] = o.delivery_date.split('-');
+                orderDate = new Date(Number(year), Number(month) - 1, Number(d));
+              } else {
+                orderDate = new Date(o.delivery_date);
+              }
+              return isSameDay(orderDate, now);
+            } catch (e) {
+              return false;
+            }
+          });
+
+          if (todayOrders.length > 0) {
+            new Notification('Entregas Pendientes Hoy', {
+              body: `Tienes ${todayOrders.length} pedido(s) para entregar el día de hoy.`,
+              icon: '/vite.svg'
+            });
+          }
+          localStorage.setItem('lastDailyNotification', todayStr);
+        }
+      }
+    };
+
+    // Check immediately and then every minute
+    checkAndSendDailyNotification();
+    const interval = setInterval(checkAndSendDailyNotification, 60000);
+    return () => clearInterval(interval);
+  }, [isLoggedIn, orders]);
+
+  // Monthly Report Notification
+  useEffect(() => {
+    if (monthlyReportReady && 'Notification' in window && Notification.permission === 'granted') {
+      const reportKey = `monthly-${monthlyReportReady.year}-${monthlyReportReady.month}`;
+      const lastReportNotified = localStorage.getItem('lastReportNotification');
+      
+      if (lastReportNotified !== reportKey) {
+        new Notification('Resumen Mensual Listo', {
+          body: `Tu resumen financiero de ${format(new Date(monthlyReportReady.year, monthlyReportReady.month), 'MMMM yyyy', { locale: es })} está listo.`,
+          icon: '/vite.svg'
+        });
+        localStorage.setItem('lastReportNotification', reportKey);
+      }
+    }
+  }, [monthlyReportReady]);
+
+  // Weekly Report (Insights) Notification
+  useEffect(() => {
+    if (insights && !insights.startsWith("La Inteligencia") && !insights.startsWith("Error") && 'Notification' in window && Notification.permission === 'granted') {
+      // Create a key for the current week to only notify once per week
+      const now = new Date();
+      const weekStart = startOfWeek(now, { weekStartsOn: 1 });
+      const weekKey = `weekly-${format(weekStart, 'yyyy-MM-dd')}`;
+      const lastWeeklyNotified = localStorage.getItem('lastWeeklyNotification');
+
+      if (lastWeeklyNotified !== weekKey) {
+        new Notification('Resumen Semanal Listo', {
+          body: 'Tu análisis financiero semanal generado por IA está disponible.',
+          icon: '/vite.svg'
+        });
+        localStorage.setItem('lastWeeklyNotification', weekKey);
+      }
+    }
+  }, [insights]);
 
   // --- Handlers ---
   const handleDownloadAndSharePDF = async (order: Order) => {
@@ -1351,6 +1477,7 @@ Usuario: ${message}`;
             {[
               { id: 'dashboard', icon: LayoutDashboard, label: 'Panel' },
               { id: 'orders', icon: ClipboardList, label: 'Pedidos' },
+              { id: 'calendar', icon: Calendar, label: 'Mi Calendario' },
               { id: 'finances', icon: Wallet, label: 'Finanzas' },
               { id: 'settings', icon: Settings, label: 'Ajustes' },
             ].map((item) => (
@@ -1409,6 +1536,7 @@ Usuario: ${message}`;
                 <h2 className="text-xl font-black tracking-tight capitalize">
                   {activeTab === 'dashboard' ? 'Panel de Control' : 
                    activeTab === 'orders' ? 'Gestión de Pedidos' :
+                   activeTab === 'calendar' ? 'Mi Calendario' :
                    activeTab === 'finances' ? 'Control Financiero' :
                    'Configuración'}
                 </h2>
@@ -1492,6 +1620,9 @@ Usuario: ${message}`;
                     getCategoryData={getCategoryData}
                     CHART_COLORS={['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899']}
                   />
+                )}
+                {activeTab === 'calendar' && (
+                  <CalendarView orders={orders} />
                 )}
                 {activeTab === 'settings' && (
                   <SettingsView 
@@ -1835,91 +1966,7 @@ Usuario: ${message}`;
           </motion.div>
         )}
 
-        {/* Edit Order Modal */}
-        {isEditModalOpen && editingOrder && (
-          <motion.div 
-            key="edit-modal-backdrop"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
-          >
-            <motion.div 
-              initial={{ scale: 0.95, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.95, y: 20 }}
-              className="bg-[#1A1A1A] rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl border border-white/10"
-            >
-              <div className="p-6 border-b border-white/10 flex justify-between items-center">
-                <h3 className="text-xl font-bold">Editar {editingOrder.is_quote ? 'Cotización' : 'Pedido'}</h3>
-                <button onClick={() => {
-                  setIsEditModalOpen(false);
-                  setEditingOrder(null);
-                }} className="p-2 rounded-full hover:bg-white/10 transition-colors">
-                  <X size={24} />
-                </button>
-              </div>
-              <form 
-                onSubmit={handleEditOrder} 
-                className="p-6 space-y-6 max-h-[70vh] overflow-y-auto custom-scrollbar"
-              >
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-500 uppercase">Cliente</label>
-                    <input name="customer_name" required className="input-field w-full" defaultValue={editingOrder.customer_name} />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-500 uppercase">Teléfono</label>
-                    <input name="phone" type="tel" inputMode="numeric" pattern="[0-9]*" required className="input-field w-full" defaultValue={editingOrder.phone} />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-500 uppercase">Dirección</label>
-                  <input name="address" className="input-field w-full" defaultValue={editingOrder.address} />
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-500 uppercase">Fecha de Entrega</label>
-                    <input name="delivery_date" type="date" required className="input-field w-full" defaultValue={editingOrder.delivery_date} />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-500 uppercase">Material</label>
-                    <input name="material" required className="input-field w-full" defaultValue={editingOrder.material} />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-500 uppercase">Tipo de Trabajo</label>
-                    <select name="work_type" required className="input-field w-full" defaultValue={editingOrder.work_type}>
-                      <option value="Muebles">Muebles</option>
-                      <option value="Automotriz">Automotriz</option>
-                      <option value="Cortinas">Cortinas</option>
-                      <option value="Reparación">Reparación</option>
-                      <option value="Otro">Otro</option>
-                    </select>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-500 uppercase">Descripción</label>
-                  <textarea name="description" className="input-field w-full min-h-[100px]" defaultValue={editingOrder.description} />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-500 uppercase">Total</label>
-                    <input name="total" type="number" inputMode="decimal" required className="input-field w-full" defaultValue={editingOrder.total} />
-                  </div>
-                  {!editingOrder.is_quote ? (
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-gray-500 uppercase">Anticipo</label>
-                      <input name="advance" type="number" inputMode="decimal" required className="input-field w-full" defaultValue={editingOrder.advance} />
-                    </div>
-                  ) : (
-                    <input name="advance" type="hidden" value="0" />
-                  )}
-                </div>
-                <button type="submit" className="btn-primary w-full py-4 text-lg">Guardar Cambios</button>
-              </form>
-            </motion.div>
-          </motion.div>
-        )}
+
 
         {/* Monthly Report Ready Modal */}
         {monthlyReportReady && (
@@ -2155,13 +2202,6 @@ Usuario: ${message}`;
                       <Download size={20} />
                       {selectedOrderDetails.is_quote ? 'Descargar Cotización (PDF)' : 'Descargar Nota de Remisión (PDF)'}
                     </button>
-
-                    {!selectedOrderDetails.is_quote && (
-                      <button className="py-4 bg-[#2A1115] text-primary rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-[#3A181D] transition-colors">
-                        <Calendar size={20} />
-                        Sincronizar con Calendario
-                      </button>
-                    )}
 
                     <button 
                       onClick={() => window.open(`tel:${selectedOrderDetails.phone}`)}
@@ -2413,6 +2453,92 @@ Usuario: ${message}`;
               </div>
             </motion.div>
           </div>
+        )}
+
+        {/* Edit Order Modal */}
+        {isEditModalOpen && editingOrder && (
+          <motion.div 
+            key="edit-modal-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 20 }}
+              className="bg-[#1A1A1A] rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl border border-white/10"
+            >
+              <div className="p-6 border-b border-white/10 flex justify-between items-center">
+                <h3 className="text-xl font-bold">Editar {editingOrder.is_quote ? 'Cotización' : 'Pedido'}</h3>
+                <button onClick={() => {
+                  setIsEditModalOpen(false);
+                  setEditingOrder(null);
+                }} className="p-2 rounded-full hover:bg-white/10 transition-colors">
+                  <X size={24} />
+                </button>
+              </div>
+              <form 
+                onSubmit={handleEditOrder} 
+                className="p-6 space-y-6 max-h-[70vh] overflow-y-auto custom-scrollbar"
+              >
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-500 uppercase">Cliente</label>
+                    <input name="customer_name" required className="input-field w-full" defaultValue={editingOrder.customer_name} />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-500 uppercase">Teléfono</label>
+                    <input name="phone" type="tel" inputMode="numeric" pattern="[0-9]*" required className="input-field w-full" defaultValue={editingOrder.phone} />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-gray-500 uppercase">Dirección</label>
+                  <input name="address" className="input-field w-full" defaultValue={editingOrder.address} />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-500 uppercase">Fecha de Entrega</label>
+                    <input name="delivery_date" type="date" required className="input-field w-full" defaultValue={editingOrder.delivery_date} />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-500 uppercase">Material</label>
+                    <input name="material" required className="input-field w-full" defaultValue={editingOrder.material} />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-500 uppercase">Tipo de Trabajo</label>
+                    <select name="work_type" required className="input-field w-full" defaultValue={editingOrder.work_type}>
+                      <option value="Muebles">Muebles</option>
+                      <option value="Automotriz">Automotriz</option>
+                      <option value="Cortinas">Cortinas</option>
+                      <option value="Reparación">Reparación</option>
+                      <option value="Otro">Otro</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-gray-500 uppercase">Descripción</label>
+                  <textarea name="description" className="input-field w-full min-h-[100px]" defaultValue={editingOrder.description} />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-500 uppercase">Total</label>
+                    <input name="total" type="number" inputMode="decimal" required className="input-field w-full" defaultValue={editingOrder.total} />
+                  </div>
+                  {!editingOrder.is_quote ? (
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-gray-500 uppercase">Anticipo</label>
+                      <input name="advance" type="number" inputMode="decimal" required className="input-field w-full" defaultValue={editingOrder.advance} />
+                    </div>
+                  ) : (
+                    <input name="advance" type="hidden" value="0" />
+                  )}
+                </div>
+                <button type="submit" className="btn-primary w-full py-4 text-lg">Guardar Cambios</button>
+              </form>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
 
