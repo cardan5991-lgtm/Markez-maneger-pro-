@@ -675,6 +675,24 @@ Usuario: ${message}`;
   }, [isLoggedIn, transactions.length, insights, generateInsights]);
 
   // --- Notifications ---
+  const sendAppNotification = async (title: string, options: any) => {
+    if (!('Notification' in window)) return;
+    if (Notification.permission !== 'granted') return;
+
+    try {
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        if (registrations.length > 0 && registrations[0].showNotification) {
+          await registrations[0].showNotification(title, options);
+          return;
+        }
+      }
+      new Notification(title, options);
+    } catch (e) {
+      console.error("Error sending notification:", e);
+    }
+  };
+
   useEffect(() => {
     if (!isLoggedIn) return;
 
@@ -709,7 +727,7 @@ Usuario: ${message}`;
           });
 
           if (todayOrders.length > 0) {
-            new Notification('Entregas Pendientes Hoy', {
+            sendAppNotification('Entregas Pendientes Hoy', {
               body: `Tienes ${todayOrders.length} pedido(s) para entregar el día de hoy.`,
               icon: '/vite.svg'
             });
@@ -732,7 +750,7 @@ Usuario: ${message}`;
       const lastReportNotified = localStorage.getItem('lastReportNotification');
       
       if (lastReportNotified !== reportKey) {
-        new Notification('Resumen Mensual Listo', {
+        sendAppNotification('Resumen Mensual Listo', {
           body: `Tu resumen financiero de ${format(new Date(monthlyReportReady.year, monthlyReportReady.month), 'MMMM yyyy', { locale: es })} está listo.`,
           icon: '/vite.svg'
         });
@@ -751,7 +769,7 @@ Usuario: ${message}`;
       const lastWeeklyNotified = localStorage.getItem('lastWeeklyNotification');
 
       if (lastWeeklyNotified !== weekKey) {
-        new Notification('Resumen Semanal Listo', {
+        sendAppNotification('Resumen Semanal Listo', {
           body: 'Tu análisis financiero semanal generado por IA está disponible.',
           icon: '/vite.svg'
         });
