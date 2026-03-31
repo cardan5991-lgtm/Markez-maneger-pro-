@@ -808,7 +808,9 @@ export const SettingsView = React.memo(({
   setIsDarkMode, 
   selectedTheme, 
   setSelectedTheme,
-  setPasswordPrompt
+  setPasswordPrompt,
+  simulatedDate,
+  setSimulatedDate
 }: any) => {
   return (
     <motion.div 
@@ -1191,6 +1193,66 @@ export const SettingsView = React.memo(({
               profile.use_whatsapp_business ? "left-7" : "left-1"
             )} />
           </button>
+        </div>
+      </div>
+
+      <div className="card space-y-6">
+        <h3 className="text-lg font-bold flex items-center gap-2">
+          <Settings size={20} className="text-primary" />
+          Herramientas de Desarrollo
+        </h3>
+        <div className="flex flex-col gap-4">
+          <button 
+            onClick={() => {
+              if (simulatedDate) {
+                setSimulatedDate(null);
+                setToast({ message: 'Simulación desactivada', type: 'success' });
+              } else {
+                const d = new Date();
+                const dayOfWeek = d.getDay();
+                const daysUntilSaturday = dayOfWeek === 6 ? 0 : (6 - dayOfWeek);
+                d.setDate(d.getDate() + daysUntilSaturday);
+                d.setHours(15, 1, 0, 0); // 3:01 PM
+                setSimulatedDate(d);
+                setToast({ message: 'Simulando Sábado 3:01 PM', type: 'success' });
+              }
+            }}
+            className={cn(
+              "w-full py-3 flex items-center justify-center gap-2 rounded-xl font-bold transition-all",
+              simulatedDate && simulatedDate.getHours() === 15 ? "bg-orange-600 hover:bg-orange-700 text-white" : "bg-white/5 hover:bg-white/10 text-white"
+            )}
+          >
+            <Clock size={20} />
+            {simulatedDate && simulatedDate.getHours() === 15 ? 'Desactivar Simulación' : 'Simular Sábado 3:01 PM'}
+          </button>
+          
+          <button 
+            onClick={() => {
+              if (simulatedDate) {
+                setSimulatedDate(null);
+                setToast({ message: 'Simulación desactivada', type: 'success' });
+              } else {
+                const d = new Date();
+                // Set to the 1st of the next month to trigger the monthly archive
+                d.setMonth(d.getMonth() + 1);
+                d.setDate(1);
+                d.setHours(0, 0, 0, 0);
+                setSimulatedDate(d);
+                setToast({ message: 'Simulando Fin de Mes', type: 'success' });
+              }
+            }}
+            className={cn(
+              "w-full py-3 flex items-center justify-center gap-2 rounded-xl font-bold transition-all",
+              simulatedDate && simulatedDate.getDate() === 1 ? "bg-blue-600 hover:bg-blue-700 text-white" : "bg-white/5 hover:bg-white/10 text-white"
+            )}
+          >
+            <Calendar size={20} />
+            {simulatedDate && simulatedDate.getDate() === 1 ? 'Desactivar Simulación' : 'Simular Fin de Mes'}
+          </button>
+          
+          <p className="text-xs text-gray-400 text-center">
+            Usa estos botones para probar el corte de caja semanal y mensual.
+          </p>
         </div>
       </div>
     </motion.div>

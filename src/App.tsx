@@ -27,7 +27,8 @@ import {
   Loader2,
   Calendar,
   MessageSquare,
-  Send
+  Send,
+  FileText
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
@@ -177,6 +178,7 @@ export default function App() {
   }, [isChatModalOpen]);
 
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [simulatedDate, setSimulatedDate] = useState<Date | null>(null);
   const isLoggingInRef = useRef(false);
 
   useEffect(() => {
@@ -215,6 +217,15 @@ export default function App() {
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [monthlyReportReady, setMonthlyReportReady] = useState<{ month: number, year: number, transactions: Transaction[] } | null>(null);
+  const [snoozedMonthlyReportKey, setSnoozedMonthlyReportKey] = useState<string | null>(null);
+  const [weeklyReportReady, setWeeklyReportReady] = useState<{
+    startDate: Date;
+    endDate: Date;
+    transactions: Transaction[];
+    orders: Order[];
+    cutoffKey: string;
+  } | null>(null);
+  const [snoozedWeeklyReportKey, setSnoozedWeeklyReportKey] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -362,10 +373,23 @@ export default function App() {
   }, [transactions]);
 
   const financeStats = useMemo(() => {
-    const income = validTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + Number(t.amount), 0);
-    const expense = validTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + Number(t.amount), 0);
+    const now = simulatedDate || new Date();
+    const dayOfWeek = now.getDay();
+    let lastCutoff = new Date(now);
+    if (dayOfWeek === 6 && now.getHours() >= 15) {
+      lastCutoff.setHours(15, 0, 0, 0);
+    } else {
+      const daysToSubtract = dayOfWeek === 6 ? 7 : dayOfWeek + 1;
+      lastCutoff.setDate(now.getDate() - daysToSubtract);
+      lastCutoff.setHours(15, 0, 0, 0);
+    }
+
+    const currentWeekTxs = validTransactions.filter(t => new Date(t.date) > lastCutoff);
+
+    const income = currentWeekTxs.filter(t => t.type === 'income').reduce((sum, t) => sum + Number(t.amount), 0);
+    const expense = currentWeekTxs.filter(t => t.type === 'expense').reduce((sum, t) => sum + Number(t.amount), 0);
     return { income, expense };
-  }, [validTransactions]);
+  }, [validTransactions, simulatedDate]);
 
   const filteredOrders = useMemo(() => {
     const filtered = orders.filter(o => {
@@ -441,9 +465,22 @@ export default function App() {
   }, [validTransactions]);
 
   const getWeeklyData = useMemo(() => {
-    const start = startOfWeek(new Date(), { weekStartsOn: 1 }); // Monday
-    const end = endOfWeek(new Date(), { weekStartsOn: 1 }); // Sunday
+    const now = simulatedDate || new Date();
+    const dayOfWeek = now.getDay();
+    let lastCutoff = new Date(now);
+    if (dayOfWeek === 6 && now.getHours() >= 15) {
+      lastCutoff.setHours(15, 0, 0, 0);
+    } else {
+      const daysToSubtract = dayOfWeek === 6 ? 7 : dayOfWeek + 1;
+      lastCutoff.setDate(now.getDate() - daysToSubtract);
+      lastCutoff.setHours(15, 0, 0, 0);
+    }
+
+    const start = lastCutoff;
+    const end = new Date(start);
+    end.setDate(end.getDate() + 6); // 7 days total (Sat to Fri, or Sat to Sat)
     
+    // We want to show 7 days starting from Saturday
     const days = eachDayOfInterval({ start, end }).map(date => ({
       date,
       name: format(date, 'EEEE', { locale: es }).substring(0, 3).toUpperCase(),
@@ -453,15 +490,17 @@ export default function App() {
 
     validTransactions.forEach(t => {
       const tDate = new Date(t.date);
-      const dayData = days.find(d => isSameDay(d.date, tDate));
-      if (dayData) {
-        if (t.type === 'income') dayData.income += Number(t.amount);
-        else dayData.expense += Number(t.amount);
+      if (tDate > start) {
+        const dayData = days.find(d => isSameDay(d.date, tDate));
+        if (dayData) {
+          if (t.type === 'income') dayData.income += Number(t.amount);
+          else dayData.expense += Number(t.amount);
+        }
       }
     });
 
     return days;
-  }, [validTransactions]);
+  }, [validTransactions, simulatedDate]);
 
   const currentWeekStats = useMemo(() => {
     return getWeeklyData.reduce((acc, day) => {
@@ -482,7 +521,7 @@ export default function App() {
   useEffect(() => {
     if (!isLoggedIn || validTransactions.length === 0) return;
 
-    const now = new Date();
+    const now = simulatedDate || new Date();
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
 
@@ -503,6 +542,11 @@ export default function App() {
       const targetMonth = oldestDate.getMonth();
       const targetYear = oldestDate.getFullYear();
 
+      const reportKey = `monthly-${targetYear}-${targetMonth}`;
+      if (snoozedMonthlyReportKey === reportKey) {
+        return;
+      }
+
       const txsToArchive = previousMonthTxs.filter(t => {
         const d = new Date(t.date);
         return d.getMonth() === targetMonth && d.getFullYear() === targetYear;
@@ -512,7 +556,7 @@ export default function App() {
     } else {
       setMonthlyReportReady(null);
     }
-  }, [validTransactions, isLoggedIn]);
+  }, [validTransactions, isLoggedIn, simulatedDate, snoozedMonthlyReportKey]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -612,7 +656,7 @@ export default function App() {
       }
 
       const userId = auth.currentUser.uid;
-      const userMsg = { role: 'user', text: message, timestamp: new Date().toISOString() };
+      const userMsg = { role: 'user', text: message, timestamp: (simulatedDate || new Date()).toISOString() };
       await addDoc(collection(db, `users/${userId}/financial_chat`), userMsg);
 
       const ai = new GoogleGenAI({ apiKey });
@@ -647,7 +691,7 @@ Usuario: ${message}`;
         config: { systemInstruction }
       });
 
-      const aiMsg = { role: 'model', text: result.text || "No pude procesar tu solicitud.", timestamp: new Date().toISOString() };
+      const aiMsg = { role: 'model', text: result.text || "No pude procesar tu solicitud.", timestamp: (simulatedDate || new Date()).toISOString() };
       await addDoc(collection(db, `users/${userId}/financial_chat`), aiMsg);
 
     } catch (err: any) {
@@ -778,7 +822,348 @@ Usuario: ${message}`;
     }
   }, [insights]);
 
+  // Weekly PDF Report Check (Saturdays 3:00 PM)
+  useEffect(() => {
+    if (!isLoggedIn || (!validTransactions.length && !orders.length)) return;
+
+    const now = simulatedDate || new Date();
+    const dayOfWeek = now.getDay(); // 0 = Sun, 1 = Mon, ..., 6 = Sat
+    let lastCutoff = new Date(now);
+    
+    if (dayOfWeek === 6 && now.getHours() >= 15) {
+      // Today is Saturday and it's past 3 PM
+      lastCutoff.setHours(15, 0, 0, 0);
+    } else {
+      // Find previous Saturday
+      const daysToSubtract = dayOfWeek === 6 ? 7 : dayOfWeek + 1;
+      lastCutoff.setDate(now.getDate() - daysToSubtract);
+      lastCutoff.setHours(15, 0, 0, 0);
+    }
+
+    const cutoffKey = `weekly-pdf-${lastCutoff.toISOString()}`;
+    const lastDownloaded = localStorage.getItem('lastWeeklyPdfDownloaded');
+
+    if (lastDownloaded !== cutoffKey && snoozedWeeklyReportKey !== cutoffKey) {
+      const startDate = new Date(lastCutoff);
+      startDate.setDate(startDate.getDate() - 7);
+
+      const weekTxs = validTransactions.filter(t => {
+        const d = new Date(t.date);
+        return d > startDate && d <= lastCutoff;
+      });
+
+      const weekOrders = orders.filter(o => {
+        if (o.is_quote || o.is_canceled || o.archived) return false;
+        try {
+          let orderDate: Date;
+          if (typeof o.delivery_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(o.delivery_date)) {
+            const [year, month, d] = o.delivery_date.split('-');
+            orderDate = new Date(Number(year), Number(month) - 1, Number(d));
+          } else {
+            orderDate = new Date(o.delivery_date);
+          }
+          return orderDate > startDate && orderDate <= lastCutoff;
+        } catch (e) {
+          return false;
+        }
+      });
+
+      setWeeklyReportReady({
+        startDate,
+        endDate: lastCutoff,
+        transactions: weekTxs,
+        orders: weekOrders,
+        cutoffKey
+      });
+    }
+  }, [validTransactions, orders, isLoggedIn, simulatedDate, snoozedWeeklyReportKey]);
+
   // --- Handlers ---
+  const handleDownloadWeeklyReport = () => {
+    if (!weeklyReportReady) return;
+    const { startDate, endDate, transactions, orders, cutoffKey } = weeklyReportReady;
+    
+    const doc = new jsPDF();
+    
+    // Colors
+    const primaryColor = [220, 38, 38]; // Red
+    const darkColor = [26, 26, 26];
+    const incomeColor = [16, 185, 129]; // Emerald
+    const expenseColor = [239, 68, 68]; // Red
+    const grayColor = [100, 100, 100];
+    const lightGray = [240, 240, 240];
+
+    // Header
+    doc.setFillColor(darkColor[0], darkColor[1], darkColor[2]);
+    doc.rect(0, 0, 210, 40, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(24);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Reporte Semanal', 14, 22);
+    
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Corte de caja: ${format(startDate, 'dd/MM/yyyy HH:mm')} al ${format(endDate, 'dd/MM/yyyy HH:mm')}`, 14, 32);
+    
+    let currentY = 50;
+    
+    // Resumen Financiero
+    const income = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + Number(t.amount), 0);
+    const expense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + Number(t.amount), 0);
+    const balance = income - expense;
+    
+    // Draw 3 boxes for stats
+    const boxWidth = 55;
+    const boxHeight = 25;
+    const startX = 14;
+    const gap = 10;
+
+    // Income Box
+    doc.setFillColor(lightGray[0], lightGray[1], lightGray[2]);
+    doc.roundedRect(startX, currentY, boxWidth, boxHeight, 3, 3, 'F');
+    doc.setTextColor(incomeColor[0], incomeColor[1], incomeColor[2]);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text('INGRESOS', startX + 5, currentY + 8);
+    doc.setFontSize(14);
+    doc.text(`$${income.toFixed(2)}`, startX + 5, currentY + 18);
+
+    // Expense Box
+    doc.setFillColor(lightGray[0], lightGray[1], lightGray[2]);
+    doc.roundedRect(startX + boxWidth + gap, currentY, boxWidth, boxHeight, 3, 3, 'F');
+    doc.setTextColor(expenseColor[0], expenseColor[1], expenseColor[2]);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text('GASTOS', startX + boxWidth + gap + 5, currentY + 8);
+    doc.setFontSize(14);
+    doc.text(`$${expense.toFixed(2)}`, startX + boxWidth + gap + 5, currentY + 18);
+
+    // Balance Box
+    doc.setFillColor(darkColor[0], darkColor[1], darkColor[2]);
+    doc.roundedRect(startX + (boxWidth + gap) * 2, currentY, boxWidth, boxHeight, 3, 3, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text('BALANCE NETO', startX + (boxWidth + gap) * 2 + 5, currentY + 8);
+    doc.setFontSize(14);
+    doc.text(`$${balance.toFixed(2)}`, startX + (boxWidth + gap) * 2 + 5, currentY + 18);
+
+    currentY += boxHeight + 15;
+
+    // Max Insights
+    doc.setFillColor(255, 241, 242); // rose-50
+    doc.setDrawColor(225, 29, 72); // rose-600
+    doc.roundedRect(14, currentY, 180, 25, 3, 3, 'FD');
+    doc.setTextColor(225, 29, 72);
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('💡 Max (Tu Asistente IA) dice:', 18, currentY + 8);
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    let insightText = '';
+    if (balance > 0) {
+      insightText = `¡Excelente semana! Lograste una utilidad de $${balance.toFixed(2)}. Mantener los gastos controlados te permitió un margen positivo.`;
+    } else {
+      insightText = `Esta semana los gastos superaron los ingresos por $${Math.abs(balance).toFixed(2)}. Revisa el desglose de gastos para identificar fugas de capital.`;
+    }
+    doc.text(insightText, 18, currentY + 16, { maxWidth: 170 });
+    
+    currentY += 35;
+
+    // Bar Chart
+    doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Comparativa de Ingresos vs Gastos', 14, currentY);
+    currentY += 10;
+
+    const chartWidth = 180;
+    const chartHeight = 40;
+    const maxVal = Math.max(income, expense, 1); // Avoid division by zero
+    
+    // Draw chart background
+    doc.setFillColor(lightGray[0], lightGray[1], lightGray[2]);
+    doc.rect(14, currentY, chartWidth, chartHeight, 'F');
+
+    // Draw bars
+    const incomeBarWidth = (income / maxVal) * (chartWidth - 20);
+    const expenseBarWidth = (expense / maxVal) * (chartWidth - 20);
+
+    // Income bar
+    doc.setFillColor(incomeColor[0], incomeColor[1], incomeColor[2]);
+    doc.rect(14 + 10, currentY + 8, incomeBarWidth, 10, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(9);
+    if (incomeBarWidth > 20) {
+      doc.text(`$${income.toFixed(2)}`, 14 + 12, currentY + 15);
+    }
+
+    // Expense bar
+    doc.setFillColor(expenseColor[0], expenseColor[1], expenseColor[2]);
+    doc.rect(14 + 10, currentY + 22, expenseBarWidth, 10, 'F');
+    doc.setTextColor(255, 255, 255);
+    if (expenseBarWidth > 20) {
+      doc.text(`$${expense.toFixed(2)}`, 14 + 12, currentY + 29);
+    }
+
+    currentY += chartHeight + 15;
+    
+    // Transacciones Table
+    if (transactions.length > 0) {
+      doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Transacciones de la Semana', 14, currentY);
+      currentY += 5;
+      autoTable(doc, {
+        startY: currentY,
+        head: [['Fecha', 'Concepto', 'Tipo', 'Monto']],
+        body: transactions.map(t => [
+          format(new Date(t.date), 'dd/MM/yyyy'),
+          t.concept,
+          t.type === 'income' ? 'Ingreso' : 'Egreso',
+          `$${Number(t.amount).toFixed(2)}`
+        ]),
+        theme: 'striped',
+        headStyles: { fillColor: darkColor },
+        alternateRowStyles: { fillColor: lightGray }
+      });
+      currentY = (doc as any).lastAutoTable.finalY + 15;
+    }
+    
+    // Pedidos Table
+    if (orders.length > 0) {
+      if (currentY > 250) { doc.addPage(); currentY = 20; }
+      doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Pedidos Entregados / Programados', 14, currentY);
+      currentY += 5;
+      autoTable(doc, {
+        startY: currentY,
+        head: [['Cliente', 'Trabajo', 'Estado', 'Total', 'Pagado']],
+        body: orders.map(o => [
+          o.customer_name,
+          o.work_type,
+          o.status === 'completed' ? 'Completado' : 'Pendiente',
+          `$${Number(o.total).toFixed(2)}`,
+          `$${Number(o.advance).toFixed(2)}`
+        ]),
+        theme: 'striped',
+        headStyles: { fillColor: primaryColor },
+        alternateRowStyles: { fillColor: lightGray }
+      });
+    }
+    
+    // Presentation Page
+    doc.addPage();
+    doc.setFillColor(darkColor[0], darkColor[1], darkColor[2]);
+    doc.rect(0, 0, 210, 40, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(24);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Presentación de Resultados', 14, 22);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Análisis y Estadísticas por Max IA', 14, 32);
+
+    let py = 50;
+    
+    // Stats
+    const totalOrders = orders.length;
+    const completedOrders = orders.filter(o => o.status === 'completed').length;
+    const pendingOrders = totalOrders - completedOrders;
+    const avgTicket = totalOrders > 0 ? (orders.reduce((sum, o) => sum + Number(o.total), 0) / totalOrders) : 0;
+    
+    const expenseCategories = transactions.filter(t => t.type === 'expense').reduce((acc, t) => {
+      acc[t.category] = (acc[t.category] || 0) + Number(t.amount);
+      return acc;
+    }, {} as Record<string, number>);
+    const topExpenseCategory = Object.entries(expenseCategories).sort((a, b) => b[1] - a[1])[0];
+
+    // Presentation Boxes
+    const pBoxWidth = 85;
+    const pBoxHeight = 35;
+    const pStartX = 14;
+    const pGap = 12;
+
+    // Box 1: Orders
+    doc.setFillColor(lightGray[0], lightGray[1], lightGray[2]);
+    doc.roundedRect(pStartX, py, pBoxWidth, pBoxHeight, 3, 3, 'F');
+    doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Pedidos de la Semana', pStartX + 5, py + 10);
+    doc.setFontSize(20);
+    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.text(`${totalOrders}`, pStartX + 5, py + 22);
+    doc.setFontSize(9);
+    doc.setTextColor(grayColor[0], grayColor[1], grayColor[2]);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`${completedOrders} completados, ${pendingOrders} pendientes`, pStartX + 5, py + 30);
+
+    // Box 2: Avg Ticket
+    doc.setFillColor(lightGray[0], lightGray[1], lightGray[2]);
+    doc.roundedRect(pStartX + pBoxWidth + pGap, py, pBoxWidth, pBoxHeight, 3, 3, 'F');
+    doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Ticket Promedio', pStartX + pBoxWidth + pGap + 5, py + 10);
+    doc.setFontSize(20);
+    doc.setTextColor(incomeColor[0], incomeColor[1], incomeColor[2]);
+    doc.text(`$${avgTicket.toFixed(2)}`, pStartX + pBoxWidth + pGap + 5, py + 22);
+    doc.setFontSize(9);
+    doc.setTextColor(grayColor[0], grayColor[1], grayColor[2]);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Por pedido registrado', pStartX + pBoxWidth + pGap + 5, py + 30);
+
+    py += pBoxHeight + pGap;
+
+    // Box 3: Top Expense
+    doc.setFillColor(lightGray[0], lightGray[1], lightGray[2]);
+    doc.roundedRect(pStartX, py, pBoxWidth, pBoxHeight, 3, 3, 'F');
+    doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Mayor Gasto', pStartX + 5, py + 10);
+    doc.setFontSize(14);
+    doc.setTextColor(expenseColor[0], expenseColor[1], expenseColor[2]);
+    doc.text(topExpenseCategory ? topExpenseCategory[0] : 'N/A', pStartX + 5, py + 20);
+    doc.setFontSize(12);
+    doc.text(topExpenseCategory ? `$${topExpenseCategory[1].toFixed(2)}` : '$0.00', pStartX + 5, py + 28);
+
+    // Box 4: Max's Tip
+    doc.setFillColor(255, 241, 242); // rose-50
+    doc.setDrawColor(225, 29, 72); // rose-600
+    doc.roundedRect(pStartX + pBoxWidth + pGap, py, pBoxWidth, pBoxHeight, 3, 3, 'FD');
+    doc.setTextColor(225, 29, 72);
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('💡 Tip de Max', pStartX + pBoxWidth + pGap + 5, py + 10);
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    let tipText = '';
+    if (balance > 0 && expense > 0) {
+      tipText = `Buen trabajo manteniendo rentabilidad. Tu mayor gasto fue ${topExpenseCategory ? topExpenseCategory[0] : ''}. Intenta optimizarlo la próxima semana.`;
+    } else if (balance <= 0) {
+      tipText = `Cuidado con los gastos. ${topExpenseCategory ? `Especialmente en ${topExpenseCategory[0]}` : ''}. Revisa si son necesarios o si puedes reducirlos.`;
+    } else {
+      tipText = `¡Semana perfecta! Sigue así, registrando todos tus movimientos para mantener el control.`;
+    }
+    doc.text(tipText, pStartX + pBoxWidth + pGap + 5, py + 18, { maxWidth: pBoxWidth - 10 });
+
+    doc.save(`Reporte_Semanal_${format(endDate, 'yyyy-MM-dd')}.pdf`);
+    
+    // Mark as downloaded
+    localStorage.setItem('lastWeeklyPdfDownloaded', cutoffKey);
+    setWeeklyReportReady(null);
+    
+    setToast({ message: 'Reporte descargado exitosamente', type: 'success' });
+    setTimeout(() => setToast(null), 3000);
+  };
+
   const handleDownloadAndSharePDF = async (order: Order) => {
     try {
       const isQuote = order.is_quote;
@@ -999,7 +1384,7 @@ Usuario: ${message}`;
           total: Number(data.total),
           advance: advanceAmount,
           status: 'pending',
-          registration_date: new Date().toISOString(),
+          registration_date: (simulatedDate || new Date()).toISOString(),
           is_quote: isQuote
         };
         
@@ -1010,7 +1395,7 @@ Usuario: ${message}`;
             type: 'income',
             amount: advanceAmount,
             concept: `Anticipo de pedido: ${data.customer_name}`,
-            date: new Date().toISOString(),
+            date: (simulatedDate || new Date()).toISOString(),
             uid: auth.currentUser!.uid,
             order_id: orderRef.id,
             category: 'Ventas'
@@ -1063,7 +1448,7 @@ Usuario: ${message}`;
       const txData = {
         ...data,
         uid: auth.currentUser.uid,
-        date: new Date().toISOString(),
+        date: (simulatedDate || new Date()).toISOString(),
         amount: Number(data.amount)
       };
       await addDoc(collection(db, `users/${auth.currentUser.uid}/transactions`), txData);
@@ -1094,7 +1479,7 @@ Usuario: ${message}`;
           type: 'income',
           amount: remaining,
           concept: `Liquidación de pedido: ${order.customer_name}`,
-          date: new Date().toISOString(),
+          date: (simulatedDate || new Date()).toISOString(),
           uid: auth.currentUser.uid,
           order_id: id,
           category: 'Ventas'
@@ -1154,7 +1539,7 @@ Usuario: ${message}`;
           type: 'income',
           amount: paymentAmount,
           concept: `Abono a pedido: ${orderSnap.data().customer_name}`,
-          date: new Date().toISOString(),
+          date: (simulatedDate || new Date()).toISOString(),
           uid: auth.currentUser.uid,
           order_id: orderSnap.id,
           category: 'Ventas'
@@ -1177,7 +1562,7 @@ Usuario: ${message}`;
       transactions,
       profile,
       customLimits: limits.reduce((acc, l) => ({ ...acc, [l.work_type]: l.limit_val }), {}),
-      exportDate: new Date().toISOString()
+      exportDate: (simulatedDate || new Date()).toISOString()
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -1278,7 +1663,7 @@ Usuario: ${message}`;
             type: 'income',
             amount: newAdvance,
             concept: `Anticipo de pedido: ${data.customer_name}`,
-            date: new Date().toISOString(),
+            date: (simulatedDate || new Date()).toISOString(),
             uid: auth.currentUser.uid,
             order_id: editingOrder.id,
             category: 'Ventas'
@@ -1304,70 +1689,358 @@ Usuario: ${message}`;
       const { month, year, transactions: txsToArchive } = monthlyReportReady;
       const monthName = format(new Date(year, month), 'MMMM', { locale: es });
       
-      // 1. Generate Excel
-      const ws = XLSX.utils.json_to_sheet(txsToArchive.map(t => ({
-        Fecha: format(new Date(t.date), 'dd/MM/yyyy HH:mm'),
-        Concepto: t.concept,
-        Categoría: t.category,
-        Tipo: t.type === 'income' ? 'Ingreso' : 'Egreso',
-        Monto: t.amount,
-        ID_Pedido: t.order_id || 'N/A'
-      })));
+      // 1. Generate Excel (Historical)
+      // We want all transactions up to the target month, grouped by month
+      const allTxsUpToMonth = transactions.filter(t => {
+        const d = new Date(t.date);
+        return d.getFullYear() < year || (d.getFullYear() === year && d.getMonth() <= month);
+      }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+      // Group by YYYY-MM
+      const groupedTxs: { [key: string]: Transaction[] } = {};
+      allTxsUpToMonth.forEach(t => {
+        const d = new Date(t.date);
+        const key = `${d.getFullYear()}-${String(d.getMonth()).padStart(2, '0')}`;
+        if (!groupedTxs[key]) groupedTxs[key] = [];
+        groupedTxs[key].push(t);
+      });
+
+      const aoa: any[][] = [];
+      
+      // Sort keys chronologically
+      const sortedKeys = Object.keys(groupedTxs).sort();
+      
+      for (const key of sortedKeys) {
+        const [yStr, mStr] = key.split('-');
+        const mName = format(new Date(Number(yStr), Number(mStr)), 'MMMM yyyy', { locale: es }).toUpperCase();
+        
+        aoa.push([`--- ${mName} ---`]);
+        aoa.push(['Fecha', 'Concepto', 'Categoría', 'Tipo', 'Monto', 'ID_Pedido']);
+        
+        for (const t of groupedTxs[key]) {
+          aoa.push([
+            format(new Date(t.date), 'dd/MM/yyyy HH:mm'),
+            t.concept,
+            t.category,
+            t.type === 'income' ? 'Ingreso' : 'Egreso',
+            t.amount,
+            t.order_id || 'N/A'
+          ]);
+        }
+        aoa.push([]); // Empty row for separation
+      }
+
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Transacciones');
-      XLSX.writeFile(wb, `Respaldo_Transacciones_${monthName}_${year}.xlsx`);
+      XLSX.utils.book_append_sheet(wb, ws, 'Historial Transacciones');
+      XLSX.writeFile(wb, `Historial_Financiero_hasta_${monthName}_${year}.xlsx`);
 
       // 2. Generate PDF Report
       const docPdf = new jsPDF();
       
+      // Colors
+      const primaryColor = [220, 38, 38]; // Red
+      const darkColor = [26, 26, 26];
+      const incomeColor = [16, 185, 129]; // Emerald
+      const expenseColor = [239, 68, 68]; // Red
+      const grayColor = [100, 100, 100];
+      const lightGray = [240, 240, 240];
+
       // Header
+      docPdf.setFillColor(darkColor[0], darkColor[1], darkColor[2]);
+      docPdf.rect(0, 0, 210, 40, 'F');
+      docPdf.setTextColor(255, 255, 255);
       docPdf.setFontSize(24);
-      docPdf.setTextColor(40, 40, 40);
-      docPdf.text(`Informe Mensual - ${monthName.toUpperCase()} ${year}`, 14, 20);
+      docPdf.setFont('helvetica', 'bold');
+      docPdf.text(`Corte Mensual: ${monthName.toUpperCase()} ${year}`, 14, 22);
       
-      docPdf.setFontSize(12);
-      docPdf.setTextColor(100, 100, 100);
-      docPdf.text(`Generado el: ${format(new Date(), 'dd/MM/yyyy HH:mm')}`, 14, 30);
+      docPdf.setFontSize(10);
+      docPdf.setFont('helvetica', 'normal');
+      docPdf.text(`Generado el: ${format(new Date(), 'dd/MM/yyyy HH:mm')}`, 14, 32);
+      
+      let currentY = 50;
       
       // Summary Stats
       const totalIncome = txsToArchive.filter(t => t.type === 'income').reduce((sum, t) => sum + Number(t.amount), 0);
       const totalExpense = txsToArchive.filter(t => t.type === 'expense').reduce((sum, t) => sum + Number(t.amount), 0);
       const netIncome = totalIncome - totalExpense;
       
+      // Draw 3 boxes for stats
+      const boxWidth = 55;
+      const boxHeight = 25;
+      const startX = 14;
+      const gap = 10;
+
+      // Income Box
+      docPdf.setFillColor(lightGray[0], lightGray[1], lightGray[2]);
+      docPdf.roundedRect(startX, currentY, boxWidth, boxHeight, 3, 3, 'F');
+      docPdf.setTextColor(incomeColor[0], incomeColor[1], incomeColor[2]);
+      docPdf.setFontSize(10);
+      docPdf.setFont('helvetica', 'bold');
+      docPdf.text('INGRESOS', startX + 5, currentY + 8);
       docPdf.setFontSize(14);
+      docPdf.text(`$${totalIncome.toFixed(2)}`, startX + 5, currentY + 18);
+
+      // Expense Box
+      docPdf.setFillColor(lightGray[0], lightGray[1], lightGray[2]);
+      docPdf.roundedRect(startX + boxWidth + gap, currentY, boxWidth, boxHeight, 3, 3, 'F');
+      docPdf.setTextColor(expenseColor[0], expenseColor[1], expenseColor[2]);
+      docPdf.setFontSize(10);
+      docPdf.setFont('helvetica', 'bold');
+      docPdf.text('GASTOS', startX + boxWidth + gap + 5, currentY + 8);
+      docPdf.setFontSize(14);
+      docPdf.text(`$${totalExpense.toFixed(2)}`, startX + boxWidth + gap + 5, currentY + 18);
+
+      // Balance Box
+      docPdf.setFillColor(darkColor[0], darkColor[1], darkColor[2]);
+      docPdf.roundedRect(startX + (boxWidth + gap) * 2, currentY, boxWidth, boxHeight, 3, 3, 'F');
+      docPdf.setTextColor(255, 255, 255);
+      docPdf.setFontSize(10);
+      docPdf.setFont('helvetica', 'bold');
+      docPdf.text('BALANCE NETO', startX + (boxWidth + gap) * 2 + 5, currentY + 8);
+      docPdf.setFontSize(14);
+      docPdf.text(`$${netIncome.toFixed(2)}`, startX + (boxWidth + gap) * 2 + 5, currentY + 18);
+
+      currentY += boxHeight + 15;
+
+      // Max Insights
+      docPdf.setFillColor(255, 241, 242); // rose-50
+      docPdf.setDrawColor(225, 29, 72); // rose-600
+      docPdf.roundedRect(14, currentY, 180, 25, 3, 3, 'FD');
+      docPdf.setTextColor(225, 29, 72);
+      docPdf.setFontSize(12);
+      docPdf.setFont('helvetica', 'bold');
+      docPdf.text('💡 Max (Tu Asistente IA) dice:', 18, currentY + 8);
       docPdf.setTextColor(0, 0, 0);
-      docPdf.text('Resumen Financiero', 14, 45);
+      docPdf.setFontSize(10);
+      docPdf.setFont('helvetica', 'normal');
+      let insightText = '';
+      if (netIncome > 0) {
+        insightText = `¡Excelente mes! Lograste una utilidad de $${netIncome.toFixed(2)}. Mantener los gastos controlados te permitió un margen positivo.`;
+      } else {
+        insightText = `Este mes los gastos superaron los ingresos por $${Math.abs(netIncome).toFixed(2)}. Revisa la comparativa semanal para identificar fugas de capital.`;
+      }
+      docPdf.text(insightText, 18, currentY + 16, { maxWidth: 170 });
       
-      autoTable(docPdf, {
-        startY: 50,
-        head: [['Concepto', 'Monto']],
-        body: [
-          ['Ingresos Totales', `$${totalIncome.toLocaleString('es-MX')}`],
-          ['Egresos Totales', `$${totalExpense.toLocaleString('es-MX')}`],
-          ['Balance Neto', `$${netIncome.toLocaleString('es-MX')}`],
-        ],
-        theme: 'grid',
-        headStyles: { fillColor: [59, 130, 246] },
-        styles: { fontSize: 12 }
+      currentY += 35;
+
+      // Weekly Breakdown
+      docPdf.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
+      docPdf.setFontSize(14);
+      docPdf.setFont('helvetica', 'bold');
+      docPdf.text('Comparativa Semanal', 14, currentY);
+      currentY += 8;
+
+      // Calculate weekly data
+      const weeks = [
+        { name: 'Semana 1 (1-7)', income: 0, expense: 0 },
+        { name: 'Semana 2 (8-14)', income: 0, expense: 0 },
+        { name: 'Semana 3 (15-21)', income: 0, expense: 0 },
+        { name: 'Semana 4 (22+)', income: 0, expense: 0 }
+      ];
+
+      txsToArchive.forEach(t => {
+        const d = new Date(t.date).getDate();
+        let wIdx = 0;
+        if (d >= 8 && d <= 14) wIdx = 1;
+        else if (d >= 15 && d <= 21) wIdx = 2;
+        else if (d >= 22) wIdx = 3;
+        
+        if (t.type === 'income') weeks[wIdx].income += Number(t.amount);
+        else weeks[wIdx].expense += Number(t.amount);
       });
+
+      autoTable(docPdf, {
+        startY: currentY,
+        head: [['Semana', 'Ingresos', 'Gastos', 'Balance']],
+        body: weeks.map(w => [
+          w.name,
+          `$${w.income.toFixed(2)}`,
+          `$${w.expense.toFixed(2)}`,
+          `$${(w.income - w.expense).toFixed(2)}`
+        ]),
+        theme: 'striped',
+        headStyles: { fillColor: darkColor },
+        alternateRowStyles: { fillColor: lightGray }
+      });
+
+      currentY = (docPdf as any).lastAutoTable.finalY + 15;
+
+      // Weekly Bar Chart
+      docPdf.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
+      docPdf.setFontSize(14);
+      docPdf.setFont('helvetica', 'bold');
+      docPdf.text('Gráfica Semanal', 14, currentY);
+      currentY += 10;
+
+      const chartWidth = 180;
+      const chartHeight = 40;
+      const maxWeeklyVal = Math.max(...weeks.map(w => Math.max(w.income, w.expense)), 1);
+      
+      docPdf.setFillColor(lightGray[0], lightGray[1], lightGray[2]);
+      docPdf.rect(14, currentY, chartWidth, chartHeight, 'F');
+
+      const barWidth = (chartWidth - 20) / 4; // 4 weeks
+      const barGap = 5;
+      const innerBarWidth = (barWidth - barGap) / 2;
+
+      weeks.forEach((w, i) => {
+        const x = 14 + 10 + i * barWidth;
+        
+        // Income bar
+        const incHeight = (w.income / maxWeeklyVal) * (chartHeight - 10);
+        docPdf.setFillColor(incomeColor[0], incomeColor[1], incomeColor[2]);
+        docPdf.rect(x, currentY + chartHeight - incHeight, innerBarWidth, incHeight, 'F');
+        
+        // Expense bar
+        const expHeight = (w.expense / maxWeeklyVal) * (chartHeight - 10);
+        docPdf.setFillColor(expenseColor[0], expenseColor[1], expenseColor[2]);
+        docPdf.rect(x + innerBarWidth, currentY + chartHeight - expHeight, innerBarWidth, expHeight, 'F');
+
+        // Label
+        docPdf.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
+        docPdf.setFontSize(8);
+        docPdf.text(`S${i + 1}`, x + innerBarWidth / 2, currentY + chartHeight + 4);
+      });
+
+      // Legend
+      docPdf.setFillColor(incomeColor[0], incomeColor[1], incomeColor[2]);
+      docPdf.rect(14 + chartWidth - 40, currentY + 5, 4, 4, 'F');
+      docPdf.setFontSize(8);
+      docPdf.text('Ingresos', 14 + chartWidth - 34, currentY + 8);
+      
+      docPdf.setFillColor(expenseColor[0], expenseColor[1], expenseColor[2]);
+      docPdf.rect(14 + chartWidth - 40, currentY + 12, 4, 4, 'F');
+      docPdf.text('Gastos', 14 + chartWidth - 34, currentY + 15);
+
+      currentY += chartHeight + 15;
 
       // Category Breakdown
       const cats: any = {};
       txsToArchive.filter(t => t.type === 'expense').forEach(t => {
         cats[t.category] = (cats[t.category] || 0) + Number(t.amount);
       });
-      const catData = Object.entries(cats).map(([name, value]) => [name, `$${Number(value).toLocaleString('es-MX')}`]);
+      const catData = Object.entries(cats).map(([name, value]) => [name, `$${Number(value).toFixed(2)}`]);
       
       if (catData.length > 0) {
-        docPdf.text('Desglose de Egresos por Categoría', 14, (docPdf as any).lastAutoTable.finalY + 15);
+        if (currentY > 240) { docPdf.addPage(); currentY = 20; }
+        docPdf.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
+        docPdf.setFontSize(14);
+        docPdf.setFont('helvetica', 'bold');
+        docPdf.text('Desglose de Egresos por Categoría', 14, currentY);
+        currentY += 5;
         autoTable(docPdf, {
-          startY: (docPdf as any).lastAutoTable.finalY + 20,
+          startY: currentY,
           head: [['Categoría', 'Total']],
           body: catData,
           theme: 'striped',
-          headStyles: { fillColor: [239, 68, 68] },
+          headStyles: { fillColor: expenseColor },
+          alternateRowStyles: { fillColor: lightGray }
         });
       }
+
+      // Presentation Page
+      docPdf.addPage();
+      docPdf.setFillColor(darkColor[0], darkColor[1], darkColor[2]);
+      docPdf.rect(0, 0, 210, 40, 'F');
+      docPdf.setTextColor(255, 255, 255);
+      docPdf.setFontSize(24);
+      docPdf.setFont('helvetica', 'bold');
+      docPdf.text('Presentación de Resultados', 14, 22);
+      docPdf.setFontSize(10);
+      docPdf.setFont('helvetica', 'normal');
+      docPdf.text('Análisis y Estadísticas por Max IA', 14, 32);
+
+      let py = 50;
+      
+      // Stats
+      // We need to count orders completed in this month.
+      const monthOrders = orders.filter(o => {
+        const d = new Date(o.registration_date);
+        return d.getFullYear() === year && d.getMonth() === month;
+      });
+      const totalOrders = monthOrders.length;
+      const completedOrders = monthOrders.filter(o => o.status === 'completed').length;
+      const pendingOrders = totalOrders - completedOrders;
+      const avgTicket = totalOrders > 0 ? (monthOrders.reduce((sum, o) => sum + Number(o.total), 0) / totalOrders) : 0;
+      
+      const expenseCategories = txsToArchive.filter(t => t.type === 'expense').reduce((acc, t) => {
+        acc[t.category] = (acc[t.category] || 0) + Number(t.amount);
+        return acc;
+      }, {} as Record<string, number>);
+      const topExpenseCategory = Object.entries(expenseCategories).sort((a, b) => b[1] - a[1])[0];
+
+      // Presentation Boxes
+      const pBoxWidth = 85;
+      const pBoxHeight = 35;
+      const pStartX = 14;
+      const pGap = 12;
+
+      // Box 1: Orders
+      docPdf.setFillColor(lightGray[0], lightGray[1], lightGray[2]);
+      docPdf.roundedRect(pStartX, py, pBoxWidth, pBoxHeight, 3, 3, 'F');
+      docPdf.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
+      docPdf.setFontSize(12);
+      docPdf.setFont('helvetica', 'bold');
+      docPdf.text('Pedidos del Mes', pStartX + 5, py + 10);
+      docPdf.setFontSize(20);
+      docPdf.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+      docPdf.text(`${totalOrders}`, pStartX + 5, py + 22);
+      docPdf.setFontSize(9);
+      docPdf.setTextColor(grayColor[0], grayColor[1], grayColor[2]);
+      docPdf.setFont('helvetica', 'normal');
+      docPdf.text(`${completedOrders} completados, ${pendingOrders} pendientes`, pStartX + 5, py + 30);
+
+      // Box 2: Avg Ticket
+      docPdf.setFillColor(lightGray[0], lightGray[1], lightGray[2]);
+      docPdf.roundedRect(pStartX + pBoxWidth + pGap, py, pBoxWidth, pBoxHeight, 3, 3, 'F');
+      docPdf.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
+      docPdf.setFontSize(12);
+      docPdf.setFont('helvetica', 'bold');
+      docPdf.text('Ticket Promedio', pStartX + pBoxWidth + pGap + 5, py + 10);
+      docPdf.setFontSize(20);
+      docPdf.setTextColor(incomeColor[0], incomeColor[1], incomeColor[2]);
+      docPdf.text(`$${avgTicket.toFixed(2)}`, pStartX + pBoxWidth + pGap + 5, py + 22);
+      docPdf.setFontSize(9);
+      docPdf.setTextColor(grayColor[0], grayColor[1], grayColor[2]);
+      docPdf.setFont('helvetica', 'normal');
+      docPdf.text('Por pedido registrado', pStartX + pBoxWidth + pGap + 5, py + 30);
+
+      py += pBoxHeight + pGap;
+
+      // Box 3: Top Expense
+      docPdf.setFillColor(lightGray[0], lightGray[1], lightGray[2]);
+      docPdf.roundedRect(pStartX, py, pBoxWidth, pBoxHeight, 3, 3, 'F');
+      docPdf.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
+      docPdf.setFontSize(12);
+      docPdf.setFont('helvetica', 'bold');
+      docPdf.text('Mayor Gasto', pStartX + 5, py + 10);
+      docPdf.setFontSize(14);
+      docPdf.setTextColor(expenseColor[0], expenseColor[1], expenseColor[2]);
+      docPdf.text(topExpenseCategory ? topExpenseCategory[0] : 'N/A', pStartX + 5, py + 20);
+      docPdf.setFontSize(12);
+      docPdf.text(topExpenseCategory ? `$${topExpenseCategory[1].toFixed(2)}` : '$0.00', pStartX + 5, py + 28);
+
+      // Box 4: Max's Tip
+      docPdf.setFillColor(255, 241, 242); // rose-50
+      docPdf.setDrawColor(225, 29, 72); // rose-600
+      docPdf.roundedRect(pStartX + pBoxWidth + pGap, py, pBoxWidth, pBoxHeight, 3, 3, 'FD');
+      docPdf.setTextColor(225, 29, 72);
+      docPdf.setFontSize(12);
+      docPdf.setFont('helvetica', 'bold');
+      docPdf.text('💡 Tip de Max', pStartX + pBoxWidth + pGap + 5, py + 10);
+      docPdf.setTextColor(0, 0, 0);
+      docPdf.setFontSize(9);
+      docPdf.setFont('helvetica', 'normal');
+      let tipText = '';
+      if (netIncome > 0 && totalExpense > 0) {
+        tipText = `Buen trabajo manteniendo rentabilidad. Tu mayor gasto fue ${topExpenseCategory ? topExpenseCategory[0] : ''}. Intenta optimizarlo el próximo mes.`;
+      } else if (netIncome <= 0) {
+        tipText = `Cuidado con los gastos. ${topExpenseCategory ? `Especialmente en ${topExpenseCategory[0]}` : ''}. Revisa si son necesarios o si puedes reducirlos.`;
+      } else {
+        tipText = `¡Mes perfecto! Sigue así, registrando todos tus movimientos para mantener el control.`;
+      }
+      docPdf.text(tipText, pStartX + pBoxWidth + pGap + 5, py + 18, { maxWidth: pBoxWidth - 10 });
 
       docPdf.save(`Reporte_Financiero_${monthName}_${year}.pdf`);
 
@@ -1661,6 +2334,8 @@ Usuario: ${message}`;
                     setIsDarkMode={setIsDarkMode}
                     selectedTheme={selectedTheme}
                     setSelectedTheme={setSelectedTheme}
+                    simulatedDate={simulatedDate}
+                    setSimulatedDate={setSimulatedDate}
                   />
                 )}
               </React.Fragment>
@@ -2010,7 +2685,10 @@ Usuario: ${message}`;
                     <h3 className="text-xl font-bold">Informe Mensual Listo</h3>
                   </div>
                 </div>
-                <button onClick={() => setMonthlyReportReady(null)} className="p-2 rounded-full hover:bg-white/10 transition-colors">
+                <button onClick={() => {
+                  setSnoozedMonthlyReportKey(`monthly-${monthlyReportReady.year}-${monthlyReportReady.month}`);
+                  setMonthlyReportReady(null);
+                }} className="p-2 rounded-full hover:bg-white/10 transition-colors">
                   <X size={24} />
                 </button>
               </div>
@@ -2025,7 +2703,50 @@ Usuario: ${message}`;
                   <button onClick={handleArchiveMonth} className="btn-primary w-full py-3">
                     Descargar y Archivar
                   </button>
-                  <button onClick={() => setMonthlyReportReady(null)} className="w-full py-3 rounded-xl font-bold bg-white/5 hover:bg-white/10 transition-colors">
+                  <button onClick={() => {
+                    setSnoozedMonthlyReportKey(`monthly-${monthlyReportReady.year}-${monthlyReportReady.month}`);
+                    setMonthlyReportReady(null);
+                  }} className="w-full py-3 rounded-xl font-bold bg-white/5 hover:bg-white/10 transition-colors">
+                    Recordarme más tarde
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {/* Weekly Report Ready Modal */}
+        {weeklyReportReady && (
+          <motion.div 
+            key="weekly-report-modal-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 20 }}
+              className="bg-[#141414] border border-white/10 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden relative"
+            >
+              <div className="p-8 text-center">
+                <div className="w-20 h-20 bg-rose-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <FileText className="text-rose-500" size={40} />
+                </div>
+                <h2 className="text-2xl font-black text-white mb-2">¡Corte Semanal Listo!</h2>
+                <p className="text-gray-400 mb-6">
+                  Tu reporte financiero y de pedidos de la semana (hasta el sábado a las 3:00 PM) está listo para descargar en PDF.
+                </p>
+                <div className="flex flex-col gap-3">
+                  <button onClick={handleDownloadWeeklyReport} className="btn-primary w-full py-3 flex items-center justify-center gap-2">
+                    <Download size={20} />
+                    Descargar Reporte (PDF)
+                  </button>
+                  <button onClick={() => {
+                    setSnoozedWeeklyReportKey(weeklyReportReady.cutoffKey);
+                    setWeeklyReportReady(null);
+                  }} className="w-full py-3 rounded-xl font-bold bg-white/5 hover:bg-white/10 transition-colors">
                     Recordarme más tarde
                   </button>
                 </div>
