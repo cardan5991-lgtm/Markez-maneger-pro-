@@ -40,7 +40,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { db, auth } from './firebase';
-import { collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, addDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, addDoc, getDocFromServer } from 'firebase/firestore';
 import { signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from 'firebase/auth';
 import { 
   DashboardView, 
@@ -144,6 +144,29 @@ export default function App() {
   const [isChatModalOpen, setIsChatModalOpen] = useState(false);
   const [chatInput, setChatInput] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const [firestoreError, setFirestoreError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function testConnection() {
+      try {
+        await getDocFromServer(doc(db, '_connection_test_', 'test'));
+        setFirestoreError(null);
+      } catch (error: any) {
+        // If we get a permission error, it means we ARE connected to the backend
+        if (error.code === 'permission-denied') {
+          setFirestoreError(null);
+          return;
+        }
+        
+        if (error.code === 'unavailable' || (error.message && error.message.includes('the client is offline'))) {
+          setFirestoreError("Error de Conexión: La base de datos no responde. Esto suele ocurrir si el servicio de Firebase no ha sido activado para este proyecto.");
+        } else {
+          setFirestoreError(`Error de Firebase: ${error.code || error.message}`);
+        }
+      }
+    }
+    testConnection();
+  }, []);
 
   useEffect(() => {
     if (isChatModalOpen) {
@@ -178,7 +201,6 @@ export default function App() {
   }, [isChatModalOpen]);
 
   const [isLoggingIn, setIsLoggingIn] = useState(false);
-  const [simulatedDate, setSimulatedDate] = useState<Date | null>(null);
   const isLoggingInRef = useRef(false);
 
   useEffect(() => {
@@ -373,7 +395,7 @@ export default function App() {
   }, [transactions]);
 
   const financeStats = useMemo(() => {
-    const now = simulatedDate || new Date();
+    const now = new Date();
     const dayOfWeek = now.getDay();
     let lastCutoff = new Date(now);
     if (dayOfWeek === 6 && now.getHours() >= 15) {
@@ -389,7 +411,7 @@ export default function App() {
     const income = currentWeekTxs.filter(t => t.type === 'income').reduce((sum, t) => sum + Number(t.amount), 0);
     const expense = currentWeekTxs.filter(t => t.type === 'expense').reduce((sum, t) => sum + Number(t.amount), 0);
     return { income, expense };
-  }, [validTransactions, simulatedDate]);
+  }, [validTransactions]);
 
   const filteredOrders = useMemo(() => {
     const filtered = orders.filter(o => {
@@ -465,7 +487,7 @@ export default function App() {
   }, [validTransactions]);
 
   const getWeeklyData = useMemo(() => {
-    const now = simulatedDate || new Date();
+    const now = new Date();
     const dayOfWeek = now.getDay();
     let lastCutoff = new Date(now);
     if (dayOfWeek === 6 && now.getHours() >= 15) {
@@ -500,7 +522,7 @@ export default function App() {
     });
 
     return days;
-  }, [validTransactions, simulatedDate]);
+  }, [validTransactions]);
 
   const currentWeekStats = useMemo(() => {
     return getWeeklyData.reduce((acc, day) => {
@@ -521,7 +543,7 @@ export default function App() {
   useEffect(() => {
     if (!isLoggedIn || validTransactions.length === 0) return;
 
-    const now = simulatedDate || new Date();
+    const now = new Date();
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
 
@@ -556,7 +578,7 @@ export default function App() {
     } else {
       setMonthlyReportReady(null);
     }
-  }, [validTransactions, isLoggedIn, simulatedDate, snoozedMonthlyReportKey]);
+  }, [validTransactions, isLoggedIn, snoozedMonthlyReportKey]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -656,7 +678,7 @@ export default function App() {
       }
 
       const userId = auth.currentUser.uid;
-      const userMsg = { role: 'user', text: message, timestamp: (simulatedDate || new Date()).toISOString() };
+      const userMsg = { role: 'user', text: message, timestamp: (new Date()).toISOString() };
       await addDoc(collection(db, `users/${userId}/financial_chat`), userMsg);
 
       const ai = new GoogleGenAI({ apiKey });
@@ -691,7 +713,7 @@ Usuario: ${message}`;
         config: { systemInstruction }
       });
 
-      const aiMsg = { role: 'model', text: result.text || "No pude procesar tu solicitud.", timestamp: (simulatedDate || new Date()).toISOString() };
+      const aiMsg = { role: 'model', text: result.text || "No pude procesar tu solicitud.", timestamp: (new Date()).toISOString() };
       await addDoc(collection(db, `users/${userId}/financial_chat`), aiMsg);
 
     } catch (err: any) {
@@ -826,7 +848,7 @@ Usuario: ${message}`;
   useEffect(() => {
     if (!isLoggedIn || (!validTransactions.length && !orders.length)) return;
 
-    const now = simulatedDate || new Date();
+    const now = new Date();
     const dayOfWeek = now.getDay(); // 0 = Sun, 1 = Mon, ..., 6 = Sat
     let lastCutoff = new Date(now);
     
@@ -876,7 +898,7 @@ Usuario: ${message}`;
         cutoffKey
       });
     }
-  }, [validTransactions, orders, isLoggedIn, simulatedDate, snoozedWeeklyReportKey]);
+  }, [validTransactions, orders, isLoggedIn, snoozedWeeklyReportKey]);
 
   // --- Handlers ---
   const handleDownloadWeeklyReport = () => {
@@ -1026,8 +1048,8 @@ Usuario: ${message}`;
           `$${Number(t.amount).toFixed(2)}`
         ]),
         theme: 'striped',
-        headStyles: { fillColor: darkColor },
-        alternateRowStyles: { fillColor: lightGray }
+        headStyles: { fillColor: darkColor as any },
+        alternateRowStyles: { fillColor: lightGray as any }
       });
       currentY = (doc as any).lastAutoTable.finalY + 15;
     }
@@ -1051,8 +1073,8 @@ Usuario: ${message}`;
           `$${Number(o.advance).toFixed(2)}`
         ]),
         theme: 'striped',
-        headStyles: { fillColor: primaryColor },
-        alternateRowStyles: { fillColor: lightGray }
+        headStyles: { fillColor: primaryColor as any },
+        alternateRowStyles: { fillColor: lightGray as any }
       });
     }
     
@@ -1384,7 +1406,7 @@ Usuario: ${message}`;
           total: Number(data.total),
           advance: advanceAmount,
           status: 'pending',
-          registration_date: (simulatedDate || new Date()).toISOString(),
+          registration_date: (new Date()).toISOString(),
           is_quote: isQuote
         };
         
@@ -1395,7 +1417,7 @@ Usuario: ${message}`;
             type: 'income',
             amount: advanceAmount,
             concept: `Anticipo de pedido: ${data.customer_name}`,
-            date: (simulatedDate || new Date()).toISOString(),
+            date: (new Date()).toISOString(),
             uid: auth.currentUser!.uid,
             order_id: orderRef.id,
             category: 'Ventas'
@@ -1448,7 +1470,7 @@ Usuario: ${message}`;
       const txData = {
         ...data,
         uid: auth.currentUser.uid,
-        date: (simulatedDate || new Date()).toISOString(),
+        date: (new Date()).toISOString(),
         amount: Number(data.amount)
       };
       await addDoc(collection(db, `users/${auth.currentUser.uid}/transactions`), txData);
@@ -1479,7 +1501,7 @@ Usuario: ${message}`;
           type: 'income',
           amount: remaining,
           concept: `Liquidación de pedido: ${order.customer_name}`,
-          date: (simulatedDate || new Date()).toISOString(),
+          date: (new Date()).toISOString(),
           uid: auth.currentUser.uid,
           order_id: id,
           category: 'Ventas'
@@ -1539,7 +1561,7 @@ Usuario: ${message}`;
           type: 'income',
           amount: paymentAmount,
           concept: `Abono a pedido: ${orderSnap.data().customer_name}`,
-          date: (simulatedDate || new Date()).toISOString(),
+          date: (new Date()).toISOString(),
           uid: auth.currentUser.uid,
           order_id: orderSnap.id,
           category: 'Ventas'
@@ -1562,7 +1584,7 @@ Usuario: ${message}`;
       transactions,
       profile,
       customLimits: limits.reduce((acc, l) => ({ ...acc, [l.work_type]: l.limit_val }), {}),
-      exportDate: (simulatedDate || new Date()).toISOString()
+      exportDate: (new Date()).toISOString()
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -1663,7 +1685,7 @@ Usuario: ${message}`;
             type: 'income',
             amount: newAdvance,
             concept: `Anticipo de pedido: ${data.customer_name}`,
-            date: (simulatedDate || new Date()).toISOString(),
+            date: (new Date()).toISOString(),
             uid: auth.currentUser.uid,
             order_id: editingOrder.id,
             category: 'Ventas'
@@ -1860,8 +1882,8 @@ Usuario: ${message}`;
           `$${(w.income - w.expense).toFixed(2)}`
         ]),
         theme: 'striped',
-        headStyles: { fillColor: darkColor },
-        alternateRowStyles: { fillColor: lightGray }
+        headStyles: { fillColor: darkColor as any },
+        alternateRowStyles: { fillColor: lightGray as any }
       });
 
       currentY = (docPdf as any).lastAutoTable.finalY + 15;
@@ -1934,8 +1956,8 @@ Usuario: ${message}`;
           head: [['Categoría', 'Total']],
           body: catData,
           theme: 'striped',
-          headStyles: { fillColor: expenseColor },
-          alternateRowStyles: { fillColor: lightGray }
+        headStyles: { fillColor: expenseColor as any },
+        alternateRowStyles: { fillColor: lightGray as any }
         });
       }
 
@@ -2147,6 +2169,14 @@ Usuario: ${message}`;
 
   return (
     <div className="min-h-screen bg-[#0A0A0A] text-white font-sans selection:bg-primary/30">
+      {firestoreError && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] w-full max-w-md px-4">
+          <div className="bg-destructive/10 border border-destructive/20 text-destructive-foreground p-4 rounded-xl flex items-center gap-3 shadow-2xl backdrop-blur-xl">
+            <AlertTriangle size={20} className="shrink-0" />
+            <p className="text-sm font-bold">{firestoreError}</p>
+          </div>
+        </div>
+      )}
       {/* Sidebar Desktop / Bottom Nav Mobile */}
       <aside className={cn(
         "fixed z-40 transition-all duration-500 ease-in-out bg-[#111111] border-white/5",
@@ -2334,8 +2364,6 @@ Usuario: ${message}`;
                     setIsDarkMode={setIsDarkMode}
                     selectedTheme={selectedTheme}
                     setSelectedTheme={setSelectedTheme}
-                    simulatedDate={simulatedDate}
-                    setSimulatedDate={setSimulatedDate}
                   />
                 )}
               </React.Fragment>
