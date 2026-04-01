@@ -41,7 +41,7 @@ import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { db, auth } from './firebase';
 import { collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, addDoc, getDocFromServer } from 'firebase/firestore';
-import { signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from 'firebase/auth';
+import { signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signOut, onAuthStateChanged } from 'firebase/auth';
 import { 
   DashboardView, 
   OrdersView, 
@@ -212,6 +212,34 @@ export default function App() {
     return () => window.removeEventListener('open-chat-modal', handleOpenChat);
   }, []);
 
+  useEffect(() => {
+    const checkRedirect = async () => {
+      try {
+        const result = await getRedirectResult(auth);
+        if (result && result.user) {
+          const userRef = doc(db, 'users', result.user.uid);
+          const userSnap = await getDoc(userRef);
+          if (!userSnap.exists()) {
+            await setDoc(userRef, {
+              uid: result.user.uid,
+              role: 'user',
+              business_name: 'Markez Tapicería',
+              address: '',
+              phone: '',
+              logo_url: '',
+              use_whatsapp_business: false
+            });
+          }
+        }
+      } catch (err: any) {
+        console.error("Redirect login error:", err);
+        setToast({ message: `Error en redirección: ${err.message || err.code || 'Desconocido'}`, type: 'error' });
+        setTimeout(() => setToast(null), 10000);
+      }
+    };
+    checkRedirect();
+  }, []);
+
   const closeChatModal = () => {
     if (window.history.state?.chatOpen) {
       window.history.back();
@@ -239,7 +267,6 @@ export default function App() {
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [monthlyReportReady, setMonthlyReportReady] = useState<{ month: number, year: number, transactions: Transaction[] } | null>(null);
-  const [snoozedMonthlyReportKey, setSnoozedMonthlyReportKey] = useState<string | null>(null);
   const [weeklyReportReady, setWeeklyReportReady] = useState<{
     startDate: Date;
     endDate: Date;
@@ -247,7 +274,6 @@ export default function App() {
     orders: Order[];
     cutoffKey: string;
   } | null>(null);
-  const [snoozedWeeklyReportKey, setSnoozedWeeklyReportKey] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -565,7 +591,8 @@ export default function App() {
       const targetYear = oldestDate.getFullYear();
 
       const reportKey = `monthly-${targetYear}-${targetMonth}`;
-      if (snoozedMonthlyReportKey === reportKey) {
+      const snoozedKey = localStorage.getItem('snoozedMonthlyReportKey');
+      if (snoozedKey === reportKey) {
         return;
       }
 
@@ -578,7 +605,7 @@ export default function App() {
     } else {
       setMonthlyReportReady(null);
     }
-  }, [validTransactions, isLoggedIn, snoozedMonthlyReportKey]);
+  }, [validTransactions, isLoggedIn]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -590,33 +617,45 @@ export default function App() {
     try {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
-      await signInWithPopup(auth, provider);
-      // Ensure user document exists
-      if (auth.currentUser) {
-        const userRef = doc(db, 'users', auth.currentUser.uid);
-        const userSnap = await getDoc(userRef);
-        if (!userSnap.exists()) {
-          await setDoc(userRef, {
-            uid: auth.currentUser.uid,
-            role: 'user',
-            business_name: 'Markez Tapicería',
-            address: '',
-            phone: '',
-            logo_url: '',
-            use_whatsapp_business: false
-          });
+      
+      const isIframe = window !== window.parent;
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      
+      if (isIframe || isMobile) {
+        await signInWithRedirect(auth, provider);
+      } else {
+        await signInWithPopup(auth, provider);
+        // Ensure user document exists
+        if (auth.currentUser) {
+          const userRef = doc(db, 'users', auth.currentUser.uid);
+          const userSnap = await getDoc(userRef);
+          if (!userSnap.exists()) {
+            await setDoc(userRef, {
+              uid: auth.currentUser.uid,
+              role: 'user',
+              business_name: 'Markez Tapicería',
+              address: '',
+              phone: '',
+              logo_url: '',
+              use_whatsapp_business: false
+            });
+          }
         }
       }
     } catch (err: any) {
       console.error("Login error:", err);
-      let errorMessage = 'Error al iniciar sesión';
+      let errorMessage = `Error al iniciar sesión: ${err.message || err.code || 'Desconocido'}`;
       if (err.code === 'auth/popup-blocked') {
         errorMessage = 'Por favor, permite las ventanas emergentes (popups) para iniciar sesión.';
+      } else if (err.code === 'auth/unauthorized-domain') {
+        errorMessage = 'Error: Dominio no autorizado. Por favor, añade esta URL a los dominios autorizados en la consola de Firebase (Authentication > Settings > Authorized domains).';
+      } else if (err.code === 'auth/popup-closed-by-user') {
+        errorMessage = 'El inicio de sesión fue cancelado. Por favor, inténtalo de nuevo.';
       } else if (err.message && err.message.includes('INTERNAL ASSERTION FAILED')) {
         errorMessage = 'Error interno de autenticación. Por favor, recarga la página e intenta de nuevo.';
       }
       setToast({ message: errorMessage, type: 'error' });
-      setTimeout(() => setToast(null), 5000);
+      setTimeout(() => setToast(null), 10000);
     } finally {
       isLoggingInRef.current = false;
       setIsLoggingIn(false);
@@ -864,8 +903,9 @@ Usuario: ${message}`;
 
     const cutoffKey = `weekly-pdf-${lastCutoff.toISOString()}`;
     const lastDownloaded = localStorage.getItem('lastWeeklyPdfDownloaded');
+    const snoozedKey = localStorage.getItem('snoozedWeeklyReportKey');
 
-    if (lastDownloaded !== cutoffKey && snoozedWeeklyReportKey !== cutoffKey) {
+    if (lastDownloaded !== cutoffKey && snoozedKey !== cutoffKey) {
       const startDate = new Date(lastCutoff);
       startDate.setDate(startDate.getDate() - 7);
 
@@ -898,7 +938,7 @@ Usuario: ${message}`;
         cutoffKey
       });
     }
-  }, [validTransactions, orders, isLoggedIn, snoozedWeeklyReportKey]);
+  }, [validTransactions, orders, isLoggedIn]);
 
   // --- Handlers ---
   const handleDownloadWeeklyReport = () => {
@@ -2714,7 +2754,7 @@ Usuario: ${message}`;
                   </div>
                 </div>
                 <button onClick={() => {
-                  setSnoozedMonthlyReportKey(`monthly-${monthlyReportReady.year}-${monthlyReportReady.month}`);
+                  localStorage.setItem('snoozedMonthlyReportKey', `monthly-${monthlyReportReady.year}-${monthlyReportReady.month}`);
                   setMonthlyReportReady(null);
                 }} className="p-2 rounded-full hover:bg-white/10 transition-colors">
                   <X size={24} />
@@ -2732,7 +2772,7 @@ Usuario: ${message}`;
                     Descargar y Archivar
                   </button>
                   <button onClick={() => {
-                    setSnoozedMonthlyReportKey(`monthly-${monthlyReportReady.year}-${monthlyReportReady.month}`);
+                    localStorage.setItem('snoozedMonthlyReportKey', `monthly-${monthlyReportReady.year}-${monthlyReportReady.month}`);
                     setMonthlyReportReady(null);
                   }} className="w-full py-3 rounded-xl font-bold bg-white/5 hover:bg-white/10 transition-colors">
                     Recordarme más tarde
@@ -2772,7 +2812,7 @@ Usuario: ${message}`;
                     Descargar Reporte (PDF)
                   </button>
                   <button onClick={() => {
-                    setSnoozedWeeklyReportKey(weeklyReportReady.cutoffKey);
+                    localStorage.setItem('snoozedWeeklyReportKey', weeklyReportReady.cutoffKey);
                     setWeeklyReportReady(null);
                   }} className="w-full py-3 rounded-xl font-bold bg-white/5 hover:bg-white/10 transition-colors">
                     Recordarme más tarde
