@@ -30,7 +30,9 @@ import {
   Check,
   Calendar,
   Sparkles,
-  Lock
+  Lock,
+  Bell,
+  BellRing
 } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { 
@@ -999,6 +1001,53 @@ export const SettingsView = React.memo(({
             <span className="text-rose-500 font-bold">Nota importante:</span> Debido a que la App está en fase de desarrollo, los datos podrían borrarse al realizar cambios técnicos. Te recomendamos <span className="text-white font-bold">exportar tu respaldo diariamente</span> para asegurar tu información.
           </p>
         </div>
+      </div>
+
+      <div className="card space-y-6">
+        <h3 className="text-lg font-bold flex items-center gap-2">
+          <Bell size={20} className="text-primary" />
+          Notificaciones
+        </h3>
+        <p className="text-sm text-gray-400">
+          Para recibir notificaciones en tu celular, instala esta aplicación en tu pantalla de inicio y luego activa las notificaciones.
+        </p>
+        <button 
+          onClick={async () => {
+            if (!('Notification' in window)) {
+              setToast({ message: 'Tu navegador no soporta notificaciones.', type: 'error' });
+              return;
+            }
+            try {
+              const permission = await Notification.requestPermission();
+              if (permission === 'granted') {
+                setToast({ message: 'Notificaciones activadas correctamente.', type: 'success' });
+                try {
+                  if (navigator.serviceWorker) {
+                    const reg = await navigator.serviceWorker.getRegistration();
+                    if (reg) {
+                      reg.showNotification('¡Listo!', { body: 'Las notificaciones están funcionando.' });
+                    } else {
+                      new Notification('¡Listo!', { body: 'Las notificaciones están funcionando.' });
+                    }
+                  } else {
+                    new Notification('¡Listo!', { body: 'Las notificaciones están funcionando.' });
+                  }
+                } catch (err) {
+                  console.log('No se pudo mostrar la notificación de prueba', err);
+                }
+              } else {
+                setToast({ message: 'Permiso denegado. Revisa la configuración de tu navegador.', type: 'error' });
+              }
+            } catch (e) {
+              console.error(e);
+              setToast({ message: 'Error al solicitar permiso de notificaciones.', type: 'error' });
+            }
+          }}
+          className="w-full py-4 bg-primary/10 border border-primary/20 hover:bg-primary/20 text-primary rounded-xl font-bold transition-all flex items-center justify-center gap-2"
+        >
+          <BellRing size={18} />
+          Habilitar Notificaciones
+        </button>
       </div>
 
       <div className="card space-y-6">

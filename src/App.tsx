@@ -41,7 +41,7 @@ import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { db, auth } from './firebase';
 import { collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, addDoc, getDocFromServer } from 'firebase/firestore';
-import { signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signOut, onAuthStateChanged } from 'firebase/auth';
+import { signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from 'firebase/auth';
 import { 
   DashboardView, 
   OrdersView, 
@@ -210,34 +210,6 @@ export default function App() {
     };
     window.addEventListener('open-chat-modal', handleOpenChat);
     return () => window.removeEventListener('open-chat-modal', handleOpenChat);
-  }, []);
-
-  useEffect(() => {
-    const checkRedirect = async () => {
-      try {
-        const result = await getRedirectResult(auth);
-        if (result && result.user) {
-          const userRef = doc(db, 'users', result.user.uid);
-          const userSnap = await getDoc(userRef);
-          if (!userSnap.exists()) {
-            await setDoc(userRef, {
-              uid: result.user.uid,
-              role: 'user',
-              business_name: 'Markez Tapicería',
-              address: '',
-              phone: '',
-              logo_url: '',
-              use_whatsapp_business: false
-            });
-          }
-        }
-      } catch (err: any) {
-        console.error("Redirect login error:", err);
-        setToast({ message: `Error en redirección: ${err.message || err.code || 'Desconocido'}`, type: 'error' });
-        setTimeout(() => setToast(null), 10000);
-      }
-    };
-    checkRedirect();
   }, []);
 
   const closeChatModal = () => {
@@ -618,28 +590,21 @@ export default function App() {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
       
-      const isIframe = window !== window.parent;
-      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-      
-      if (isIframe || isMobile) {
-        await signInWithRedirect(auth, provider);
-      } else {
-        await signInWithPopup(auth, provider);
-        // Ensure user document exists
-        if (auth.currentUser) {
-          const userRef = doc(db, 'users', auth.currentUser.uid);
-          const userSnap = await getDoc(userRef);
-          if (!userSnap.exists()) {
-            await setDoc(userRef, {
-              uid: auth.currentUser.uid,
-              role: 'user',
-              business_name: 'Markez Tapicería',
-              address: '',
-              phone: '',
-              logo_url: '',
-              use_whatsapp_business: false
-            });
-          }
+      await signInWithPopup(auth, provider);
+      // Ensure user document exists
+      if (auth.currentUser) {
+        const userRef = doc(db, 'users', auth.currentUser.uid);
+        const userSnap = await getDoc(userRef);
+        if (!userSnap.exists()) {
+          await setDoc(userRef, {
+            uid: auth.currentUser.uid,
+            role: 'user',
+            business_name: 'Markez Tapicería',
+            address: '',
+            phone: '',
+            logo_url: '',
+            use_whatsapp_business: false
+          });
         }
       }
     } catch (err: any) {
