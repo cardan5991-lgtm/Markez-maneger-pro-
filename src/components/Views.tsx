@@ -1,6 +1,7 @@
 import React from 'react';
-import { auth, db } from '../firebase';
+import { auth, db, messaging } from '../firebase';
 import { doc, setDoc, updateDoc, addDoc, collection } from 'firebase/firestore';
+import { getToken } from 'firebase/messaging';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   TrendingUp, 
@@ -1020,20 +1021,48 @@ export const SettingsView = React.memo(({
             try {
               const permission = await Notification.requestPermission();
               if (permission === 'granted') {
-                setToast({ message: 'Notificaciones activadas correctamente.', type: 'success' });
-                try {
-                  if (navigator.serviceWorker) {
-                    const reg = await navigator.serviceWorker.getRegistration();
-                    if (reg) {
-                      reg.showNotification('¡Listo!', { body: 'Las notificaciones están funcionando.' });
-                    } else {
-                      new Notification('¡Listo!', { body: 'Las notificaciones están funcionando.' });
+                setToast({ message: 'Notificaciones activadas. Configurando conexión...', type: 'success' });
+                
+                if (messaging && auth.currentUser) {
+                  try {
+                    const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
+                    if (!vapidKey) {
+                      console.warn('Falta VITE_FIREBASE_VAPID_KEY en las variables de entorno');
+                      setToast({ message: 'Falta configurar la clave VAPID en el sistema.', type: 'error' });
+                      return;
                     }
-                  } else {
-                    new Notification('¡Listo!', { body: 'Las notificaciones están funcionando.' });
+                    
+                    let reg = null;
+                    if (navigator.serviceWorker) {
+                      reg = await navigator.serviceWorker.ready;
+                    }
+                    
+                    const token = await getToken(messaging, { 
+                      vapidKey,
+                      serviceWorkerRegistration: reg || undefined
+                    });
+                    if (token) {
+                      await updateDoc(doc(db, 'users', auth.currentUser.uid), {
+                        fcmToken: token
+                      });
+                      setToast({ message: '¡Conexión de notificaciones exitosa!', type: 'success' });
+                      
+                      // Test notification
+                      if (navigator.serviceWorker) {
+                        const reg = await navigator.serviceWorker.getRegistration();
+                        if (reg) {
+                          reg.showNotification('¡Listo!', { body: 'Las notificaciones están funcionando.' });
+                        }
+                      }
+                    } else {
+                      setToast({ message: 'No se pudo generar el token de notificación.', type: 'error' });
+                    }
+                  } catch (tokenErr) {
+                    console.error('Error getting token:', tokenErr);
+                    setToast({ message: 'Error al conectar con el servidor de notificaciones.', type: 'error' });
                   }
-                } catch (err) {
-                  console.log('No se pudo mostrar la notificación de prueba', err);
+                } else {
+                  setToast({ message: 'Servicio de mensajería no disponible.', type: 'error' });
                 }
               } else {
                 setToast({ message: 'Permiso denegado. Revisa la configuración de tu navegador.', type: 'error' });

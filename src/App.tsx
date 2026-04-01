@@ -39,9 +39,10 @@ import { cn } from './lib/utils';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
-import { db, auth } from './firebase';
+import { db, auth, messaging } from './firebase';
 import { collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, addDoc, getDocFromServer } from 'firebase/firestore';
 import { signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from 'firebase/auth';
+import { onMessage } from 'firebase/messaging';
 import { 
   DashboardView, 
   OrdersView, 
@@ -199,6 +200,18 @@ export default function App() {
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, [isChatModalOpen]);
+
+  useEffect(() => {
+    if (messaging) {
+      const unsubscribe = onMessage(messaging, (payload) => {
+        console.log('Message received in foreground: ', payload);
+        const title = payload.notification?.title || 'Nueva notificación';
+        const body = payload.notification?.body || '';
+        setToast({ message: `${title}: ${body}`, type: 'success' });
+      });
+      return () => unsubscribe();
+    }
+  }, []);
 
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const isLoggingInRef = useRef(false);
