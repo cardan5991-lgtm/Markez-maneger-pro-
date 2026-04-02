@@ -1015,57 +1015,70 @@ export const SettingsView = React.memo(({
           <Smartphone size={20} className="text-primary" />
           Instalar Aplicación
         </h3>
-        <p className="text-sm text-gray-400">
-          Instala Markez Pro en tu dispositivo para acceder más rápido, en pantalla completa y poder recibir notificaciones.
-        </p>
         
-        <div className="space-y-4">
-          <button 
-            onClick={() => {
-              if (window.deferredPrompt) {
-                window.deferredPrompt.prompt();
-                window.deferredPrompt.userChoice.then((choiceResult: any) => {
-                  if (choiceResult.outcome === 'accepted') {
-                    setToast({ message: '¡Gracias por instalar la aplicación!', type: 'success' });
-                  }
-                  window.deferredPrompt = null;
-                });
-              } else {
-                const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-                if (isIOS) {
-                  setToast({ message: 'En iPhone/iPad: Toca Compartir y luego "Agregar a inicio".', type: 'warning' });
-                } else {
-                  setToast({ message: 'Toca los 3 puntos del navegador y selecciona "Instalar aplicación".', type: 'warning' });
-                }
-              }
-            }}
-            className="w-full py-4 bg-primary text-black rounded-xl font-bold transition-all flex items-center justify-center gap-2 hover:bg-primary/90"
-          >
-            <Download size={18} />
-            Instalar Markez Pro
-          </button>
-
-          <div className="p-4 bg-white/5 rounded-xl border border-white/10 space-y-3 text-sm">
-            <p className="font-bold text-white">Si el botón no funciona, instálala manualmente:</p>
-            
-            <div className="space-y-2">
-              <p className="text-primary font-medium">🍎 En iPhone / iPad (Safari):</p>
-              <ol className="list-decimal pl-5 text-gray-400 space-y-1">
-                <li>Toca el ícono de <strong>Compartir</strong> (el cuadrado con flecha hacia arriba).</li>
-                <li>Desliza hacia abajo y selecciona <strong>"Agregar a inicio"</strong>.</li>
-                <li>Abre la app desde tu pantalla de inicio para activar las notificaciones.</li>
-              </ol>
-            </div>
-
-            <div className="space-y-2 pt-2 border-t border-white/10">
-              <p className="text-emerald-400 font-medium">🤖 En Android (Chrome):</p>
-              <ol className="list-decimal pl-5 text-gray-400 space-y-1">
-                <li>Toca los <strong>3 puntos</strong> en la esquina superior derecha.</li>
-                <li>Selecciona <strong>"Instalar aplicación"</strong> o "Agregar a la pantalla principal".</li>
-              </ol>
+        {window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone ? (
+          <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-xl flex items-center gap-3">
+            <CheckCircle2 className="text-green-500 shrink-0" size={24} />
+            <div>
+              <p className="font-bold text-green-500">¡App Instalada!</p>
+              <p className="text-sm text-gray-400">Estás usando la versión instalada de Markez Pro.</p>
             </div>
           </div>
-        </div>
+        ) : (
+          <>
+            <p className="text-sm text-gray-400">
+              Instala Markez Pro en tu dispositivo para acceder más rápido, en pantalla completa y poder recibir notificaciones.
+            </p>
+            
+            <div className="space-y-4">
+              <button 
+                onClick={() => {
+                  if (window.deferredPrompt) {
+                    window.deferredPrompt.prompt();
+                    window.deferredPrompt.userChoice.then((choiceResult: any) => {
+                      if (choiceResult.outcome === 'accepted') {
+                        setToast({ message: '¡Gracias por instalar la aplicación!', type: 'success' });
+                      }
+                      window.deferredPrompt = null;
+                    });
+                  } else {
+                    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+                    if (isIOS) {
+                      setToast({ message: 'En iPhone/iPad: Toca Compartir y luego "Agregar a inicio".', type: 'warning' });
+                    } else {
+                      setToast({ message: 'Toca los 3 puntos del navegador y selecciona "Instalar aplicación".', type: 'warning' });
+                    }
+                  }
+                }}
+                className="w-full py-4 bg-primary text-black rounded-xl font-bold transition-all flex items-center justify-center gap-2 hover:bg-primary/90"
+              >
+                <Download size={18} />
+                Instalar Markez Pro
+              </button>
+
+              <div className="p-4 bg-white/5 rounded-xl border border-white/10 space-y-3 text-sm">
+                <p className="font-bold text-white">Si el botón no funciona, instálala manualmente:</p>
+                
+                <div className="space-y-2">
+                  <p className="text-primary font-medium">🍎 En iPhone / iPad (Safari):</p>
+                  <ol className="list-decimal pl-5 text-gray-400 space-y-1">
+                    <li>Toca el ícono de <strong>Compartir</strong> (el cuadrado con flecha hacia arriba).</li>
+                    <li>Desliza hacia abajo y selecciona <strong>"Agregar a inicio"</strong>.</li>
+                    <li>Abre la app desde tu pantalla de inicio para activar las notificaciones.</li>
+                  </ol>
+                </div>
+
+                <div className="space-y-2 pt-2 border-t border-white/10">
+                  <p className="text-emerald-400 font-medium">🤖 En Android (Chrome):</p>
+                  <ol className="list-decimal pl-5 text-gray-400 space-y-1">
+                    <li>Toca los <strong>3 puntos</strong> en la esquina superior derecha.</li>
+                    <li>Selecciona <strong>"Instalar aplicación"</strong> o "Agregar a la pantalla principal".</li>
+                  </ol>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       <div className="card space-y-6">

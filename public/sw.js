@@ -1,6 +1,6 @@
 importScripts('firebase-messaging-sw.js');
 
-const CACHE_NAME = 'markez-pro-v6';
+const CACHE_NAME = 'markez-pro-v7';
 const ASSETS = [
   '/',
   '/index.html',
