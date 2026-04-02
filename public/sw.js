@@ -1,11 +1,14 @@
-importScripts('/firebase-messaging-sw.js');
+importScripts('firebase-messaging-sw.js');
 
-const CACHE_NAME = 'markez-pro-v3';
+const CACHE_NAME = 'markez-pro-v6';
 const ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
-  '/icon.svg'
+  '/icon-192.png',
+  '/icon-512.png',
+  '/icon.svg',
+  '/firebase-messaging-sw.js'
 ];
 
 self.addEventListener('install', (event) => {

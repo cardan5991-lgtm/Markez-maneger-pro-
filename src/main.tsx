@@ -39,8 +39,18 @@ window.onunhandledrejection = (event) => {
 };
 
 // PWA Install Prompt
+declare global {
+  interface Window {
+    deferredPrompt: any;
+  }
+}
+
 window.addEventListener('beforeinstallprompt', (e) => {
-  console.log('PWA: Install prompt is ready');
+  e.preventDefault();
+  window.deferredPrompt = e;
+  console.log('PWA: Install prompt is ready and saved');
+  // Dispatch a custom event so React components can listen
+  window.dispatchEvent(new Event('pwa-install-ready'));
 });
 
 // Register Service Worker for PWA

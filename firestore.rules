@@ -96,7 +96,7 @@ service cloud.firestore {
     // ===============================================================
 
     function isValidUser() {
-      let allowedKeys = ['uid', 'role', 'business_name', 'phone', 'address', 'logo_url', 'whatsapp_template', 'use_whatsapp_business'];
+      let allowedKeys = ['uid', 'role', 'business_name', 'phone', 'address', 'logo_url', 'whatsapp_template', 'use_whatsapp_business', 'fcmToken', 'email'];
       return request.resource.data.keys().hasOnly(allowedKeys) &&
              hasRequiredFields(['uid', 'role']) &&
              request.resource.data.uid == request.auth.uid &&
@@ -106,6 +106,8 @@ service cloud.firestore {
              isValidOptionalString('address', 0, 200) &&
              isValidOptionalString('logo_url', 0, 500) &&
              isValidOptionalString('whatsapp_template', 0, 1000) &&
+             isValidOptionalString('fcmToken', 0, 8000) &&
+             isValidOptionalString('email', 0, 200) &&
              (!( 'use_whatsapp_business' in request.resource.data ) || request.resource.data.use_whatsapp_business is bool);
     }
 

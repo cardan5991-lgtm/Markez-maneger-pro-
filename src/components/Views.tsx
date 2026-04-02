@@ -1,6 +1,6 @@
 import React from 'react';
 import { auth, db, messaging } from '../firebase';
-import { doc, setDoc, updateDoc, addDoc, collection } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, addDoc, collection, getDoc } from 'firebase/firestore';
 import { getToken } from 'firebase/messaging';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -902,7 +902,13 @@ export const SettingsView = React.memo(({
           onClick={async () => {
             if (!auth.currentUser) return;
             try {
-              await setDoc(doc(db, 'users', auth.currentUser.uid), { ...profile, uid: auth.currentUser.uid }, { merge: true });
+              const userDocRef = doc(db, 'users', auth.currentUser.uid);
+              const userDocSnap = await getDoc(userDocRef);
+              await setDoc(userDocRef, { 
+                ...profile, 
+                uid: auth.currentUser.uid,
+                role: userDocSnap.exists() ? (userDocSnap.data().role || 'user') : 'user'
+              }, { merge: true });
               setToast({ message: 'Perfil actualizado correctamente', type: 'success' });
               setTimeout(() => setToast(null), 3000);
             } catch (err: any) {
@@ -1006,12 +1012,91 @@ export const SettingsView = React.memo(({
 
       <div className="card space-y-6">
         <h3 className="text-lg font-bold flex items-center gap-2">
+          <Smartphone size={20} className="text-primary" />
+          Instalar Aplicación
+        </h3>
+        <p className="text-sm text-gray-400">
+          Instala Markez Pro en tu dispositivo para acceder más rápido, en pantalla completa y poder recibir notificaciones.
+        </p>
+        
+        <div className="space-y-4">
+          <button 
+            onClick={() => {
+              if (window.deferredPrompt) {
+                window.deferredPrompt.prompt();
+                window.deferredPrompt.userChoice.then((choiceResult: any) => {
+                  if (choiceResult.outcome === 'accepted') {
+                    setToast({ message: '¡Gracias por instalar la aplicación!', type: 'success' });
+                  }
+                  window.deferredPrompt = null;
+                });
+              } else {
+                const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+                if (isIOS) {
+                  setToast({ message: 'En iPhone/iPad: Toca Compartir y luego "Agregar a inicio".', type: 'warning' });
+                } else {
+                  setToast({ message: 'Toca los 3 puntos del navegador y selecciona "Instalar aplicación".', type: 'warning' });
+                }
+              }
+            }}
+            className="w-full py-4 bg-primary text-black rounded-xl font-bold transition-all flex items-center justify-center gap-2 hover:bg-primary/90"
+          >
+            <Download size={18} />
+            Instalar Markez Pro
+          </button>
+
+          <div className="p-4 bg-white/5 rounded-xl border border-white/10 space-y-3 text-sm">
+            <p className="font-bold text-white">Si el botón no funciona, instálala manualmente:</p>
+            
+            <div className="space-y-2">
+              <p className="text-primary font-medium">🍎 En iPhone / iPad (Safari):</p>
+              <ol className="list-decimal pl-5 text-gray-400 space-y-1">
+                <li>Toca el ícono de <strong>Compartir</strong> (el cuadrado con flecha hacia arriba).</li>
+                <li>Desliza hacia abajo y selecciona <strong>"Agregar a inicio"</strong>.</li>
+                <li>Abre la app desde tu pantalla de inicio para activar las notificaciones.</li>
+              </ol>
+            </div>
+
+            <div className="space-y-2 pt-2 border-t border-white/10">
+              <p className="text-emerald-400 font-medium">🤖 En Android (Chrome):</p>
+              <ol className="list-decimal pl-5 text-gray-400 space-y-1">
+                <li>Toca los <strong>3 puntos</strong> en la esquina superior derecha.</li>
+                <li>Selecciona <strong>"Instalar aplicación"</strong> o "Agregar a la pantalla principal".</li>
+              </ol>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="card space-y-6">
+        <h3 className="text-lg font-bold flex items-center gap-2">
           <Bell size={20} className="text-primary" />
           Notificaciones
         </h3>
         <p className="text-sm text-gray-400">
           Para recibir notificaciones en tu celular, instala esta aplicación en tu pantalla de inicio y luego activa las notificaciones.
         </p>
+        <div className="p-3 bg-black/40 rounded-lg border border-white/5 space-y-1">
+          <div className="flex items-center justify-between text-[10px] uppercase font-bold text-gray-500">
+            <span>Estado de Conexión</span>
+            {import.meta.env.VITE_FIREBASE_VAPID_KEY ? (
+              <span className="text-emerald-500 flex items-center gap-1">
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Configurado
+              </span>
+            ) : (
+              <span className="text-rose-500 flex items-center gap-1">
+                <div className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                Falta Clave VAPID
+              </span>
+            )}
+          </div>
+          {!import.meta.env.VITE_FIREBASE_VAPID_KEY && (
+            <p className="text-[10px] text-gray-500 leading-tight">
+              Debes copiar la clave de tu captura y pegarla en <span className="text-primary">Settings &gt; Environment Variables</span> con el nombre <span className="text-white">VITE_FIREBASE_VAPID_KEY</span>.
+            </p>
+          )}
+        </div>
         <button 
           onClick={async () => {
             if (!('Notification' in window)) {
@@ -1028,23 +1113,38 @@ export const SettingsView = React.memo(({
                     const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
                     if (!vapidKey) {
                       console.warn('Falta VITE_FIREBASE_VAPID_KEY en las variables de entorno');
-                      setToast({ message: 'Falta configurar la clave VAPID en el sistema.', type: 'error' });
+                      setToast({ message: 'Falta configurar VITE_FIREBASE_VAPID_KEY en Settings > Environment Variables.', type: 'error' });
                       return;
                     }
+                    console.log('VAPID Key loaded:', vapidKey.substring(0, 5) + '...' + vapidKey.substring(vapidKey.length - 5));
                     
-                    let reg = null;
-                    if (navigator.serviceWorker) {
-                      reg = await navigator.serviceWorker.ready;
+                    let reg = undefined;
+                    if ('serviceWorker' in navigator) {
+                      reg = await navigator.serviceWorker.getRegistration();
                     }
                     
                     const token = await getToken(messaging, { 
                       vapidKey,
-                      serviceWorkerRegistration: reg || undefined
+                      serviceWorkerRegistration: reg
                     });
                     if (token) {
-                      await updateDoc(doc(db, 'users', auth.currentUser.uid), {
-                        fcmToken: token
-                      });
+                      const userDocRef = doc(db, 'users', auth.currentUser.uid);
+                      const userDocSnap = await getDoc(userDocRef);
+                      
+                      if (!userDocSnap.exists()) {
+                        await setDoc(userDocRef, {
+                          fcmToken: token,
+                          uid: auth.currentUser.uid,
+                          role: 'user'
+                        });
+                      } else {
+                        await setDoc(userDocRef, {
+                          fcmToken: token,
+                          uid: auth.currentUser.uid,
+                          role: userDocSnap.data().role || 'user'
+                        }, { merge: true });
+                      }
+                      
                       setToast({ message: '¡Conexión de notificaciones exitosa!', type: 'success' });
                       
                       // Test notification
@@ -1057,9 +1157,9 @@ export const SettingsView = React.memo(({
                     } else {
                       setToast({ message: 'No se pudo generar el token de notificación.', type: 'error' });
                     }
-                  } catch (tokenErr) {
+                  } catch (tokenErr: any) {
                     console.error('Error getting token:', tokenErr);
-                    setToast({ message: 'Error al conectar con el servidor de notificaciones.', type: 'error' });
+                    setToast({ message: `Error de conexión: ${tokenErr.message || 'Desconocido'}`, type: 'error' });
                   }
                 } else {
                   setToast({ message: 'Servicio de mensajería no disponible.', type: 'error' });
@@ -1142,7 +1242,13 @@ export const SettingsView = React.memo(({
           onClick={async () => {
             if (!auth.currentUser) return;
             try {
-              await setDoc(doc(db, 'users', auth.currentUser.uid), { ...profile, uid: auth.currentUser.uid }, { merge: true });
+              const userDocRef = doc(db, 'users', auth.currentUser.uid);
+              const userDocSnap = await getDoc(userDocRef);
+              await setDoc(userDocRef, { 
+                ...profile, 
+                uid: auth.currentUser.uid,
+                role: userDocSnap.exists() ? (userDocSnap.data().role || 'user') : 'user'
+              }, { merge: true });
               setToast({ message: 'Plantilla guardada', type: 'success' });
               setTimeout(() => setToast(null), 3000);
             } catch (err: any) {
@@ -1251,7 +1357,13 @@ export const SettingsView = React.memo(({
               setProfile(newProfile);
               try {
                 if (!auth.currentUser) return;
-                await setDoc(doc(db, 'users', auth.currentUser.uid), { ...newProfile, uid: auth.currentUser.uid }, { merge: true });
+                const userDocRef = doc(db, 'users', auth.currentUser.uid);
+                const userDocSnap = await getDoc(userDocRef);
+                await setDoc(userDocRef, { 
+                  ...newProfile, 
+                  uid: auth.currentUser.uid,
+                  role: userDocSnap.exists() ? (userDocSnap.data().role || 'user') : 'user'
+                }, { merge: true });
                 setToast({ message: 'Preferencia guardada', type: 'success' });
                 setTimeout(() => setToast(null), 2000);
               } catch (err: any) {

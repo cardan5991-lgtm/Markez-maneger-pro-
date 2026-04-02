@@ -1624,7 +1624,13 @@ Usuario: ${message}`;
       const userId = auth.currentUser.uid;
       
       if (data.profile) {
-        await setDoc(doc(db, 'users', userId), { ...data.profile, uid: userId }, { merge: true });
+        const userDocRef = doc(db, 'users', userId);
+        const userDocSnap = await getDoc(userDocRef);
+        await setDoc(userDocRef, { 
+          ...data.profile, 
+          uid: userId,
+          role: userDocSnap.exists() ? (userDocSnap.data().role || 'user') : 'user'
+        }, { merge: true });
       }
       
       if (data.orders) {
