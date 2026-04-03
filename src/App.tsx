@@ -2132,17 +2132,22 @@ Usuario: ${message}`;
     document.body.removeChild(link);
   };
 
-  const forceUpdateApp = () => {
+  const forceUpdateApp = async () => {
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistrations().then(registrations => {
-        for (let registration of registrations) {
-          registration.unregister();
-        }
-      });
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      for (let registration of registrations) {
+        await registration.unregister();
+      }
+    }
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      for (let key of keys) {
+        await caches.delete(key);
+      }
     }
     localStorage.clear();
     sessionStorage.clear();
-    window.location.reload();
+    window.location.href = window.location.pathname + '?t=' + new Date().getTime();
   };
 
   const showConfirmation = (config: any) => {
