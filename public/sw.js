@@ -1,6 +1,6 @@
 importScripts('firebase-messaging-sw.js');
 
-const CACHE_NAME = 'markez-pro-v28';
+const CACHE_NAME = 'markez-pro-v29';
 const ASSETS = [
   '/',
   '/?source=pwa',
@@ -88,13 +88,13 @@ self.addEventListener('push', function(event) {
 // Background Sync
 self.addEventListener('sync', function(event) {
   if (event.tag == 'myFirstSync') {
-    event.waitUntil(console.log('Sync event fired!'));
+    event.waitUntil(Promise.resolve().then(() => console.log('Sync event fired!')));
   }
 });
 
 // Periodic Sync
 self.addEventListener('periodicsync', (event) => {
   if (event.tag === 'content-sync') {
-    event.waitUntil(console.log('Periodic sync event fired!'));
+    event.waitUntil(Promise.resolve().then(() => console.log('Periodic sync event fired!')));
   }
 });
