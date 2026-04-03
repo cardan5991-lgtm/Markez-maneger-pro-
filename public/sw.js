@@ -1,11 +1,11 @@
 importScripts('firebase-messaging-sw.js');
 
-const CACHE_NAME = 'markez-pro-v19';
+const CACHE_NAME = 'markez-pro-v20';
 const ASSETS = [
   '/',
   '/?source=pwa',
   '/index.html',
-  '/manifest.json?v=19',
+  '/manifest.json?v=20',
   '/icon-192.png',
   '/icon-512.png'
 ];
