@@ -2,7 +2,7 @@
   "name": "Markez Manager Pro",
   "short_name": "MarkezPro",
   "description": "Administración para Tapicería Markez",
-  "start_url": "/?v=15",
+  "start_url": "/?v=16",
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#000000",
