@@ -812,7 +812,7 @@ Usuario: ${message}`;
           if (todayOrders.length > 0) {
             sendAppNotification('Entregas Pendientes Hoy', {
               body: `Tienes ${todayOrders.length} pedido(s) para entregar el día de hoy.`,
-              icon: '/icon-192-v5.png'
+              icon: '/icon-192-v6.png'
             });
           }
           localStorage.setItem('lastDailyNotification', todayStr);
@@ -835,7 +835,7 @@ Usuario: ${message}`;
       if (lastReportNotified !== reportKey) {
         sendAppNotification('Resumen Mensual Listo', {
           body: `Tu resumen financiero de ${format(new Date(monthlyReportReady.year, monthlyReportReady.month), 'MMMM yyyy', { locale: es })} está listo.`,
-          icon: '/icon-192-v5.png'
+          icon: '/icon-192-v6.png'
         });
         localStorage.setItem('lastReportNotification', reportKey);
       }
@@ -854,7 +854,7 @@ Usuario: ${message}`;
       if (lastWeeklyNotified !== weekKey) {
         sendAppNotification('Resumen Semanal Listo', {
           body: 'Tu análisis financiero semanal generado por IA está disponible.',
-          icon: '/icon-192-v5.png'
+          icon: '/icon-192-v6.png'
         });
         localStorage.setItem('lastWeeklyNotification', weekKey);
       }

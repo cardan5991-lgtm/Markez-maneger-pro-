@@ -1,13 +1,13 @@
 importScripts('firebase-messaging-sw.js');
 
-const CACHE_NAME = 'markez-pro-v27';
+const CACHE_NAME = 'markez-pro-v28';
 const ASSETS = [
   '/',
   '/?source=pwa',
   '/index.html',
   '/manifest.json',
-  '/icon-192-v5.png',
-  '/icon-512-v5.png'
+  '/icon-192-v6.png',
+  '/icon-512-v6.png'
 ];
 
 self.addEventListener('install', (event) => {
@@ -71,8 +71,8 @@ self.addEventListener('push', function(event) {
     const data = event.data.json();
     const options = {
       body: data.body,
-      icon: '/icon-192-v5.png',
-      badge: '/icon-192-v5.png',
+      icon: '/icon-192-v6.png',
+      badge: '/icon-192-v6.png',
       vibrate: [100, 50, 100],
       data: {
         dateOfArrival: Date.now(),
