@@ -1,6 +1,6 @@
 importScripts('firebase-messaging-sw.js');
 
-const CACHE_NAME = 'markez-pro-v29';
+const CACHE_NAME = 'markez-pro-v30';
 const ASSETS = [
   '/',
   '/?source=pwa',
@@ -65,36 +65,4 @@ self.addEventListener('fetch', (event) => {
 });
 
 
-// Push Notifications
-self.addEventListener('push', function(event) {
-  if (event.data) {
-    const data = event.data.json();
-    const options = {
-      body: data.body,
-      icon: '/icon-192-v6.png',
-      badge: '/icon-192-v6.png',
-      vibrate: [100, 50, 100],
-      data: {
-        dateOfArrival: Date.now(),
-        primaryKey: '2'
-      }
-    };
-    event.waitUntil(
-      self.registration.showNotification(data.title, options)
-    );
-  }
-});
 
-// Background Sync
-self.addEventListener('sync', function(event) {
-  if (event.tag == 'myFirstSync') {
-    event.waitUntil(Promise.resolve().then(() => console.log('Sync event fired!')));
-  }
-});
-
-// Periodic Sync
-self.addEventListener('periodicsync', (event) => {
-  if (event.tag === 'content-sync') {
-    event.waitUntil(Promise.resolve().then(() => console.log('Periodic sync event fired!')));
-  }
-});
