@@ -14,9 +14,10 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
-const CACHE_NAME = 'markez-pro-v32';
+const CACHE_NAME = 'markez-pro-v33';
 const ASSETS_TO_CACHE = [
   '/',
+  '/?source=pwa',
   '/index.html',
   '/manifest.json',
   '/icon-192-v6.png',
