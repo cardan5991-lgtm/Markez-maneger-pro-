@@ -3,12 +3,11 @@
   "name": "Markez Manager Pro",
   "short_name": "MarkezPro",
   "description": "Administración para Tapicería Markez",
-  "start_url": "/",
+  "start_url": "/?source=pwa",
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#000000",
   "orientation": "portrait",
-  "display_override": ["standalone", "window-controls-overlay"],
   "scope": "/",
   "lang": "es",
   "dir": "ltr",
@@ -45,15 +44,13 @@
       "src": "/icon-512-v6.png",
       "sizes": "512x512",
       "type": "image/png",
-      "form_factor": "wide",
-      "label": "Markez Pro Dashboard"
+      "form_factor": "wide"
     },
     {
       "src": "/icon-512-v6.png",
       "sizes": "512x512",
       "type": "image/png",
-      "form_factor": "narrow",
-      "label": "Markez Pro Mobile"
+      "form_factor": "narrow"
     }
   ]
 }

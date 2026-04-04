@@ -41,16 +41,7 @@ import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { db, auth, messaging } from './firebase';
 import { collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, addDoc, getDocFromServer } from 'firebase/firestore';
-import { 
-  signInWithPopup, 
-  signInWithRedirect, 
-  getRedirectResult, 
-  GoogleAuthProvider, 
-  signOut, 
-  onAuthStateChanged,
-  setPersistence,
-  browserLocalPersistence
-} from 'firebase/auth';
+import { signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from 'firebase/auth';
 import { onMessage } from 'firebase/messaging';
 import { 
   DashboardView, 
@@ -331,41 +322,6 @@ export default function App() {
   }, [isDarkMode, selectedTheme]);
 
   useEffect(() => {
-    // Set persistence to local to ensure auth state survives app restarts
-    setPersistence(auth, browserLocalPersistence).catch(err => console.error("Persistence error:", err));
-
-    // Handle redirect result for PWA/APK environments where popups might fail
-    getRedirectResult(auth)
-      .then(async (result) => {
-        if (result?.user) {
-          setIsLoggedIn(true);
-          const userRef = doc(db, 'users', result.user.uid);
-          const userSnap = await getDoc(userRef);
-          if (!userSnap.exists()) {
-            await setDoc(userRef, {
-              uid: result.user.uid,
-              role: 'user',
-              business_name: 'Markez Tapicería',
-              address: '',
-              phone: '',
-              logo_url: '',
-              use_whatsapp_business: false
-            });
-          }
-        }
-      })
-      .catch((err) => {
-        console.error("Redirect result error:", err);
-        if (err.code === 'auth/internal-error' || err.code === 'auth/network-request-failed') {
-          // These can happen in some PWA wrappers
-          return;
-        }
-        // Only show toast if it's a real error, not just a missing state from a cancelled flow
-        if (err.message && !err.message.includes('missing initial state')) {
-          setToast({ message: `Error de autenticación: ${err.message}`, type: 'error' });
-        }
-      });
-
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         setIsLoggedIn(true);
@@ -647,24 +603,7 @@ export default function App() {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
       
-      // Try popup first
-      try {
-        await signInWithPopup(auth, provider);
-      } catch (popupErr: any) {
-        // If popup is blocked or fails in a way that suggests we should use redirect
-        if (popupErr.code === 'auth/popup-blocked' || 
-            popupErr.code === 'auth/popup-closed-by-user' ||
-            popupErr.code === 'auth/cancelled-popup-request' ||
-            window.matchMedia('(display-mode: standalone)').matches ||
-            /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
-          
-          console.log("Falling back to redirect login...");
-          await signInWithRedirect(auth, provider);
-          return; // Redirect will reload the page
-        }
-        throw popupErr;
-      }
-
+      await signInWithPopup(auth, provider);
       // Ensure user document exists
       if (auth.currentUser) {
         const userRef = doc(db, 'users', auth.currentUser.uid);

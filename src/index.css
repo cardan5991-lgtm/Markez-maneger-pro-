@@ -58,8 +58,7 @@ body.light-mode {
 @layer base {
   html, body {
     @apply overflow-x-hidden w-full h-full;
-    touch-action: pan-x pan-y;
-    overscroll-behavior-y: none;
+    touch-action: manipulation;
     -webkit-text-size-adjust: 100%;
   }
 
