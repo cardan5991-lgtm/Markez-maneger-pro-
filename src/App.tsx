@@ -613,10 +613,10 @@ export default function App() {
     if (validTransactions.length === 0) return;
     setIsGeneratingInsights(true);
     try {
-      const apiKey = process.env.GEMINI_API_KEY;
+      const apiKey = (typeof process !== 'undefined' && process.env && process.env.GEMINI_API_KEY) || import.meta.env.VITE_GEMINI_API_KEY;
 
       if (!apiKey || apiKey === "undefined" || apiKey === "null" || apiKey.trim() === "") {
-        setInsights("La Inteligencia Artificial no está disponible en este momento (Falta configuración).");
+        setInsights("La Inteligencia Artificial no está disponible en este momento (Falta configurar la API Key en Vercel).");
         return;
       }
 
@@ -648,9 +648,9 @@ export default function App() {
     if (!auth.currentUser || !message.trim()) return;
     setIsSendingMessage(true);
     try {
-      const apiKey = process.env.GEMINI_API_KEY;
+      const apiKey = (typeof process !== 'undefined' && process.env && process.env.GEMINI_API_KEY) || import.meta.env.VITE_GEMINI_API_KEY;
       if (!apiKey || apiKey === "undefined" || apiKey === "null" || apiKey.trim() === "") {
-        setToast({ message: "La IA no está configurada.", type: 'error' });
+        setToast({ message: "La IA no está configurada (Falta API Key en Vercel).", type: 'error' });
         return;
       }
 

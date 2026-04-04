@@ -74,6 +74,13 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+// Enforce portrait orientation if supported
+if (typeof screen !== 'undefined' && screen.orientation && (screen.orientation as any).lock) {
+  (screen.orientation as any).lock('portrait').catch((err: any) => {
+    console.log('Orientation lock failed or not supported:', err);
+  });
+}
+
 const rootElement = document.getElementById('root');
 if (rootElement) {
   const root = createRoot(rootElement);
