@@ -39,10 +39,9 @@ import { cn } from './lib/utils';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
-import { db, auth, messaging } from './firebase';
-import { collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, addDoc, getDocFromServer } from 'firebase/firestore';
+import { db, auth } from './firebase';
+import { collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, addDoc } from 'firebase/firestore';
 import { signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from 'firebase/auth';
-import { onMessage } from 'firebase/messaging';
 import { 
   DashboardView, 
   OrdersView, 
@@ -145,29 +144,6 @@ export default function App() {
   const [isChatModalOpen, setIsChatModalOpen] = useState(false);
   const [chatInput, setChatInput] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const [firestoreError, setFirestoreError] = useState<string | null>(null);
-
-  useEffect(() => {
-    async function testConnection() {
-      try {
-        await getDocFromServer(doc(db, '_connection_test_', 'test'));
-        setFirestoreError(null);
-      } catch (error: any) {
-        // If we get a permission error, it means we ARE connected to the backend
-        if (error.code === 'permission-denied') {
-          setFirestoreError(null);
-          return;
-        }
-        
-        if (error.code === 'unavailable' || (error.message && error.message.includes('the client is offline'))) {
-          setFirestoreError("Error de Conexión: La base de datos no responde. Esto suele ocurrir si el servicio de Firebase no ha sido activado para este proyecto.");
-        } else {
-          setFirestoreError(`Error de Firebase: ${error.code || error.message}`);
-        }
-      }
-    }
-    testConnection();
-  }, []);
 
   useEffect(() => {
     if (isChatModalOpen) {
@@ -200,18 +176,6 @@ export default function App() {
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, [isChatModalOpen]);
-
-  useEffect(() => {
-    if (messaging) {
-      const unsubscribe = onMessage(messaging, (payload) => {
-        console.log('Message received in foreground: ', payload);
-        const title = payload.notification?.title || 'Nueva notificación';
-        const body = payload.notification?.body || '';
-        setToast({ message: `${title}: ${body}`, type: 'success' });
-      });
-      return () => unsubscribe();
-    }
-  }, []);
 
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const isLoggingInRef = useRef(false);
@@ -252,6 +216,7 @@ export default function App() {
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [monthlyReportReady, setMonthlyReportReady] = useState<{ month: number, year: number, transactions: Transaction[] } | null>(null);
+  const [snoozedMonthlyReportKey, setSnoozedMonthlyReportKey] = useState<string | null>(null);
   const [weeklyReportReady, setWeeklyReportReady] = useState<{
     startDate: Date;
     endDate: Date;
@@ -259,6 +224,7 @@ export default function App() {
     orders: Order[];
     cutoffKey: string;
   } | null>(null);
+  const [snoozedWeeklyReportKey, setSnoozedWeeklyReportKey] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -576,8 +542,7 @@ export default function App() {
       const targetYear = oldestDate.getFullYear();
 
       const reportKey = `monthly-${targetYear}-${targetMonth}`;
-      const snoozedKey = localStorage.getItem('snoozedMonthlyReportKey');
-      if (snoozedKey === reportKey) {
+      if (snoozedMonthlyReportKey === reportKey) {
         return;
       }
 
@@ -590,7 +555,7 @@ export default function App() {
     } else {
       setMonthlyReportReady(null);
     }
-  }, [validTransactions, isLoggedIn]);
+  }, [validTransactions, isLoggedIn, snoozedMonthlyReportKey]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -602,7 +567,6 @@ export default function App() {
     try {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
-      
       await signInWithPopup(auth, provider);
       // Ensure user document exists
       if (auth.currentUser) {
@@ -622,18 +586,14 @@ export default function App() {
       }
     } catch (err: any) {
       console.error("Login error:", err);
-      let errorMessage = `Error al iniciar sesión: ${err.message || err.code || 'Desconocido'}`;
+      let errorMessage = 'Error al iniciar sesión';
       if (err.code === 'auth/popup-blocked') {
         errorMessage = 'Por favor, permite las ventanas emergentes (popups) para iniciar sesión.';
-      } else if (err.code === 'auth/unauthorized-domain') {
-        errorMessage = 'Error: Dominio no autorizado. Por favor, añade esta URL a los dominios autorizados en la consola de Firebase (Authentication > Settings > Authorized domains).';
-      } else if (err.code === 'auth/popup-closed-by-user') {
-        errorMessage = 'El inicio de sesión fue cancelado. Por favor, inténtalo de nuevo.';
       } else if (err.message && err.message.includes('INTERNAL ASSERTION FAILED')) {
         errorMessage = 'Error interno de autenticación. Por favor, recarga la página e intenta de nuevo.';
       }
       setToast({ message: errorMessage, type: 'error' });
-      setTimeout(() => setToast(null), 10000);
+      setTimeout(() => setToast(null), 5000);
     } finally {
       isLoggingInRef.current = false;
       setIsLoggingIn(false);
@@ -812,7 +772,7 @@ Usuario: ${message}`;
           if (todayOrders.length > 0) {
             sendAppNotification('Entregas Pendientes Hoy', {
               body: `Tienes ${todayOrders.length} pedido(s) para entregar el día de hoy.`,
-              icon: '/icon-192-v6.png'
+              icon: '/vite.svg'
             });
           }
           localStorage.setItem('lastDailyNotification', todayStr);
@@ -835,7 +795,7 @@ Usuario: ${message}`;
       if (lastReportNotified !== reportKey) {
         sendAppNotification('Resumen Mensual Listo', {
           body: `Tu resumen financiero de ${format(new Date(monthlyReportReady.year, monthlyReportReady.month), 'MMMM yyyy', { locale: es })} está listo.`,
-          icon: '/icon-192-v6.png'
+          icon: '/vite.svg'
         });
         localStorage.setItem('lastReportNotification', reportKey);
       }
@@ -854,7 +814,7 @@ Usuario: ${message}`;
       if (lastWeeklyNotified !== weekKey) {
         sendAppNotification('Resumen Semanal Listo', {
           body: 'Tu análisis financiero semanal generado por IA está disponible.',
-          icon: '/icon-192-v6.png'
+          icon: '/vite.svg'
         });
         localStorage.setItem('lastWeeklyNotification', weekKey);
       }
@@ -867,21 +827,22 @@ Usuario: ${message}`;
 
     const now = new Date();
     const dayOfWeek = now.getDay(); // 0 = Sun, 1 = Mon, ..., 6 = Sat
-    
-    // Only trigger on Saturdays between 15:00 (3 PM) and 23:59
-    if (dayOfWeek !== 6 || now.getHours() < 15) {
-      setWeeklyReportReady(null);
-      return;
-    }
-
     let lastCutoff = new Date(now);
-    lastCutoff.setHours(15, 0, 0, 0);
+    
+    if (dayOfWeek === 6 && now.getHours() >= 15) {
+      // Today is Saturday and it's past 3 PM
+      lastCutoff.setHours(15, 0, 0, 0);
+    } else {
+      // Find previous Saturday
+      const daysToSubtract = dayOfWeek === 6 ? 7 : dayOfWeek + 1;
+      lastCutoff.setDate(now.getDate() - daysToSubtract);
+      lastCutoff.setHours(15, 0, 0, 0);
+    }
 
     const cutoffKey = `weekly-pdf-${lastCutoff.toISOString()}`;
     const lastDownloaded = localStorage.getItem('lastWeeklyPdfDownloaded');
-    const snoozedKey = localStorage.getItem('snoozedWeeklyReportKey');
 
-    if (lastDownloaded !== cutoffKey && snoozedKey !== cutoffKey) {
+    if (lastDownloaded !== cutoffKey && snoozedWeeklyReportKey !== cutoffKey) {
       const startDate = new Date(lastCutoff);
       startDate.setDate(startDate.getDate() - 7);
 
@@ -914,7 +875,7 @@ Usuario: ${message}`;
         cutoffKey
       });
     }
-  }, [validTransactions, orders, isLoggedIn]);
+  }, [validTransactions, orders, isLoggedIn, snoozedWeeklyReportKey]);
 
   // --- Handlers ---
   const handleDownloadWeeklyReport = () => {
@@ -1622,13 +1583,7 @@ Usuario: ${message}`;
       const userId = auth.currentUser.uid;
       
       if (data.profile) {
-        const userDocRef = doc(db, 'users', userId);
-        const userDocSnap = await getDoc(userDocRef);
-        await setDoc(userDocRef, { 
-          ...data.profile, 
-          uid: userId,
-          role: userDocSnap.exists() ? (userDocSnap.data().role || 'user') : 'user'
-        }, { merge: true });
+        await setDoc(doc(db, 'users', userId), { ...data.profile, uid: userId }, { merge: true });
       }
       
       if (data.orders) {
@@ -2130,22 +2085,17 @@ Usuario: ${message}`;
     document.body.removeChild(link);
   };
 
-  const forceUpdateApp = async () => {
+  const forceUpdateApp = () => {
     if ('serviceWorker' in navigator) {
-      const registrations = await navigator.serviceWorker.getRegistrations();
-      for (let registration of registrations) {
-        await registration.unregister();
-      }
-    }
-    if ('caches' in window) {
-      const keys = await caches.keys();
-      for (let key of keys) {
-        await caches.delete(key);
-      }
+      navigator.serviceWorker.getRegistrations().then(registrations => {
+        for (let registration of registrations) {
+          registration.unregister();
+        }
+      });
     }
     localStorage.clear();
     sessionStorage.clear();
-    window.location.href = window.location.pathname + '?t=' + new Date().getTime();
+    window.location.reload();
   };
 
   const showConfirmation = (config: any) => {
@@ -2196,14 +2146,6 @@ Usuario: ${message}`;
 
   return (
     <div className="min-h-screen bg-[#0A0A0A] text-white font-sans selection:bg-primary/30">
-      {firestoreError && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] w-full max-w-md px-4">
-          <div className="bg-destructive/10 border border-destructive/20 text-destructive-foreground p-4 rounded-xl flex items-center gap-3 shadow-2xl backdrop-blur-xl">
-            <AlertTriangle size={20} className="shrink-0" />
-            <p className="text-sm font-bold">{firestoreError}</p>
-          </div>
-        </div>
-      )}
       {/* Sidebar Desktop / Bottom Nav Mobile */}
       <aside className={cn(
         "fixed z-40 transition-all duration-500 ease-in-out bg-[#111111] border-white/5",
@@ -2741,7 +2683,7 @@ Usuario: ${message}`;
                   </div>
                 </div>
                 <button onClick={() => {
-                  localStorage.setItem('snoozedMonthlyReportKey', `monthly-${monthlyReportReady.year}-${monthlyReportReady.month}`);
+                  setSnoozedMonthlyReportKey(`monthly-${monthlyReportReady.year}-${monthlyReportReady.month}`);
                   setMonthlyReportReady(null);
                 }} className="p-2 rounded-full hover:bg-white/10 transition-colors">
                   <X size={24} />
@@ -2759,7 +2701,7 @@ Usuario: ${message}`;
                     Descargar y Archivar
                   </button>
                   <button onClick={() => {
-                    localStorage.setItem('snoozedMonthlyReportKey', `monthly-${monthlyReportReady.year}-${monthlyReportReady.month}`);
+                    setSnoozedMonthlyReportKey(`monthly-${monthlyReportReady.year}-${monthlyReportReady.month}`);
                     setMonthlyReportReady(null);
                   }} className="w-full py-3 rounded-xl font-bold bg-white/5 hover:bg-white/10 transition-colors">
                     Recordarme más tarde
@@ -2799,7 +2741,7 @@ Usuario: ${message}`;
                     Descargar Reporte (PDF)
                   </button>
                   <button onClick={() => {
-                    localStorage.setItem('snoozedWeeklyReportKey', weeklyReportReady.cutoffKey);
+                    setSnoozedWeeklyReportKey(weeklyReportReady.cutoffKey);
                     setWeeklyReportReady(null);
                   }} className="w-full py-3 rounded-xl font-bold bg-white/5 hover:bg-white/10 transition-colors">
                     Recordarme más tarde

@@ -1,22 +1,18 @@
-importScripts('firebase-messaging-sw.js');
-
-const CACHE_NAME = 'markez-pro-v28';
+const CACHE_NAME = 'markez-pro-v3';
 const ASSETS = [
   '/',
-  '/?source=pwa',
   '/index.html',
   '/manifest.json',
-  '/icon-192-v6.png',
-  '/icon-512-v6.png'
+  '/icon.svg'
 ];
 
 self.addEventListener('install', (event) => {
-  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(ASSETS);
     })
   );
+  self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
@@ -33,7 +29,6 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Network First Strategy
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   
@@ -45,56 +40,24 @@ self.addEventListener('fetch', (event) => {
   }
 
   event.respondWith(
-    fetch(event.request).then((networkResponse) => {
-      if (networkResponse && networkResponse.status === 200) {
-        const responseToCache = networkResponse.clone();
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(event.request, responseToCache);
-        });
-      }
-      return networkResponse;
-    }).catch(() => {
-      return caches.match(event.request).then((cachedResponse) => {
-        if (cachedResponse) return cachedResponse;
-        if (event.request.mode === 'navigate') {
-          return caches.match('/index.html');
+    caches.match(event.request).then((cachedResponse) => {
+      const fetchPromise = fetch(event.request).then((networkResponse) => {
+        if (networkResponse && networkResponse.status === 200 && (networkResponse.type === 'basic' || networkResponse.type === 'cors')) {
+          const responseToCache = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseToCache);
+          });
         }
+        return networkResponse;
+      }).catch(async (err) => {
+        if (event.request.mode === 'navigate') {
+          const indexResponse = await caches.match('/index.html');
+          if (indexResponse) return indexResponse;
+        }
+        throw err;
       });
+
+      return cachedResponse || fetchPromise;
     })
   );
-});
-
-
-// Push Notifications
-self.addEventListener('push', function(event) {
-  if (event.data) {
-    const data = event.data.json();
-    const options = {
-      body: data.body,
-      icon: '/icon-192-v6.png',
-      badge: '/icon-192-v6.png',
-      vibrate: [100, 50, 100],
-      data: {
-        dateOfArrival: Date.now(),
-        primaryKey: '2'
-      }
-    };
-    event.waitUntil(
-      self.registration.showNotification(data.title, options)
-    );
-  }
-});
-
-// Background Sync
-self.addEventListener('sync', function(event) {
-  if (event.tag == 'myFirstSync') {
-    event.waitUntil(console.log('Sync event fired!'));
-  }
-});
-
-// Periodic Sync
-self.addEventListener('periodicsync', (event) => {
-  if (event.tag === 'content-sync') {
-    event.waitUntil(console.log('Periodic sync event fired!'));
-  }
 });

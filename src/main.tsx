@@ -39,38 +39,32 @@ window.onunhandledrejection = (event) => {
 };
 
 // PWA Install Prompt
-declare global {
-  interface Window {
-    deferredPrompt: any;
-  }
-}
-
 window.addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault();
-  window.deferredPrompt = e;
-  console.log('PWA: Install prompt is ready and saved');
-  // Dispatch a custom event so React components can listen
-  window.dispatchEvent(new Event('pwa-install-ready'));
+  console.log('PWA: Install prompt is ready');
 });
 
-// Register Service Worker for PWA (now handled in index.html for PWABuilder compatibility)
-// The logic for updates is kept here if needed, but registration is in index.html
+// Register Service Worker for PWA
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.ready.then(reg => {
-    reg.onupdatefound = () => {
-      const installingWorker = reg.installing;
-      if (installingWorker) {
-        installingWorker.onstatechange = () => {
-          if (installingWorker.state === 'installed') {
-            if (navigator.serviceWorker.controller) {
-              console.log('New content is available; please refresh.');
-            } else {
-              console.log('Content is cached for offline use.');
-            }
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js', { scope: '/' })
+      .then(reg => {
+        console.log('SW registered with scope:', reg.scope);
+        reg.onupdatefound = () => {
+          const installingWorker = reg.installing;
+          if (installingWorker) {
+            installingWorker.onstatechange = () => {
+              if (installingWorker.state === 'installed') {
+                if (navigator.serviceWorker.controller) {
+                  console.log('New content is available; please refresh.');
+                } else {
+                  console.log('Content is cached for offline use.');
+                }
+              }
+            };
           }
         };
-      }
-    };
+      })
+      .catch(err => console.error('SW registration failed:', err));
   });
 }
 
