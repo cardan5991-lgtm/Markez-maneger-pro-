@@ -1,18 +1,33 @@
-const CACHE_NAME = 'markez-pro-v3';
-const ASSETS = [
+importScripts('https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging-compat.js');
+
+const firebaseConfig = {
+  projectId: "gen-lang-client-0273028698",
+  appId: "1:653980593713:web:24287930b9990208376f10",
+  apiKey: "AIzaSyCfHV5sYYzfatZ9LzhKFhP66P1HeyIc-dE",
+  authDomain: "gen-lang-client-0273028698.firebaseapp.com",
+  storageBucket: "gen-lang-client-0273028698.firebasestorage.app",
+  messagingSenderId: "653980593713",
+  measurementId: ""
+};
+
+firebase.initializeApp(firebaseConfig);
+const messaging = firebase.messaging();
+
+const CACHE_NAME = 'markez-pro-v36';
+const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
   '/manifest.json',
-  '/icon.svg'
+  '/icon-192-v6.png',
+  '/icon-512-v6.png'
 ];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS);
-    })
-  );
   self.skipWaiting();
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS_TO_CACHE))
+  );
 });
 
 self.addEventListener('activate', (event) => {
@@ -33,31 +48,37 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   
   const url = new URL(event.request.url);
-  
-  // Skip Firebase and external APIs
-  if (url.hostname.includes('firestore') || url.hostname.includes('firebase') || url.hostname.includes('googleapis') || url.hostname.includes('identitytoolkit')) {
+  if (url.hostname.includes('firestore') || url.hostname.includes('firebase') || url.hostname.includes('googleapis')) {
     return;
   }
 
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      const fetchPromise = fetch(event.request).then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200 && (networkResponse.type === 'basic' || networkResponse.type === 'cors')) {
-          const responseToCache = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseToCache);
-          });
-        }
-        return networkResponse;
-      }).catch(async (err) => {
+    fetch(event.request).then((networkResponse) => {
+      if (networkResponse && networkResponse.status === 200) {
+        const responseToCache = networkResponse.clone();
+        caches.open(CACHE_NAME).then((cache) => {
+          cache.put(event.request, responseToCache);
+        });
+      }
+      return networkResponse;
+    }).catch(() => {
+      return caches.match(event.request).then((cachedResponse) => {
+        if (cachedResponse) return cachedResponse;
         if (event.request.mode === 'navigate') {
-          const indexResponse = await caches.match('/index.html');
-          if (indexResponse) return indexResponse;
+          return caches.match('/index.html');
         }
-        throw err;
       });
-
-      return cachedResponse || fetchPromise;
     })
   );
+});
+
+messaging.onBackgroundMessage((payload) => {
+  const notificationTitle = payload.notification?.title || 'Nueva notificación';
+  const notificationOptions = {
+    body: payload.notification?.body || 'Tienes un nuevo mensaje.',
+    icon: '/icon-192-v6.png',
+    badge: '/icon-192-v6.png',
+    data: payload.data
+  };
+  self.registration.showNotification(notificationTitle, notificationOptions);
 });

@@ -827,17 +827,17 @@ Usuario: ${message}`;
 
     const now = new Date();
     const dayOfWeek = now.getDay(); // 0 = Sun, 1 = Mon, ..., 6 = Sat
-    let lastCutoff = new Date(now);
     
-    if (dayOfWeek === 6 && now.getHours() >= 15) {
-      // Today is Saturday and it's past 3 PM
-      lastCutoff.setHours(15, 0, 0, 0);
-    } else {
-      // Find previous Saturday
-      const daysToSubtract = dayOfWeek === 6 ? 7 : dayOfWeek + 1;
-      lastCutoff.setDate(now.getDate() - daysToSubtract);
-      lastCutoff.setHours(15, 0, 0, 0);
+    // ONLY activate on Saturdays after 3:00 PM
+    const isCutoffTime = dayOfWeek === 6 && now.getHours() >= 15;
+    
+    if (!isCutoffTime) {
+      if (weeklyReportReady) setWeeklyReportReady(null);
+      return;
     }
+
+    let lastCutoff = new Date(now);
+    lastCutoff.setHours(15, 0, 0, 0);
 
     const cutoffKey = `weekly-pdf-${lastCutoff.toISOString()}`;
     const lastDownloaded = localStorage.getItem('lastWeeklyPdfDownloaded');
