@@ -1,0 +1,21 @@
+{
+  "short_name": "Markez Pro",
+  "name": "Markez Manager Pro",
+  "icons": [
+    {
+      "src": "/icon-192-v6.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "/icon-512-v6.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#000000",
+  "display": "standalone",
+  "theme_color": "#000000",
+  "orientation": "portrait"
+}
