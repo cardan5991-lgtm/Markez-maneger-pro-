@@ -14,7 +14,17 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
-const CACHE_NAME = 'markez-pro-v33';
+const CACHE_NAME = 'markez-pro-v34';
+
+// Safe sync listeners for PWA score
+self.addEventListener('sync', (event) => {
+  console.log('Background sync event:', event.tag);
+});
+
+self.addEventListener('periodicsync', (event) => {
+  console.log('Periodic sync event:', event.tag);
+});
+
 const ASSETS_TO_CACHE = [
   '/',
   '/?source=pwa',
