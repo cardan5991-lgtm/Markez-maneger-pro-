@@ -1,4 +1,5 @@
 {
+  "id": "/",
   "short_name": "Markez Pro",
   "name": "Markez Manager Pro",
   "description": "Panel de control y gestión financiera para tapicería.",
@@ -14,20 +15,6 @@
       "type": "image/png",
       "sizes": "512x512",
       "purpose": "any maskable"
-    }
-  ],
-  "screenshots": [
-    {
-      "src": "/icon-512-v6.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "form_factor": "wide"
-    },
-    {
-      "src": "/icon-512-v6.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "form_factor": "narrow"
     }
   ],
   "start_url": "/",

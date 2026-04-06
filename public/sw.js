@@ -1,11 +1,33 @@
-const CACHE_NAME = 'markez-pro-cache-v2';
+const CACHE_NAME = 'markez-pro-cache-v3';
+const CORE_ASSETS = [
+  '/',
+  '/index.html',
+  '/manifest.json',
+  '/icon-192-v6.png',
+  '/icon-512-v6.png'
+];
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.addAll(CORE_ASSETS);
+    })
+  );
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames.map((cacheName) => {
+          if (cacheName !== CACHE_NAME) {
+            return caches.delete(cacheName);
+          }
+        })
+      );
+    }).then(() => self.clients.claim())
+  );
 });
 
 self.addEventListener('fetch', (event) => {
@@ -17,7 +39,6 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        // Clone the response before caching
         const responseToCache = response.clone();
         caches.open(CACHE_NAME).then((cache) => {
           cache.put(event.request, responseToCache);
@@ -25,12 +46,10 @@ self.addEventListener('fetch', (event) => {
         return response;
       })
       .catch(() => {
-        // If network fails, try to return from cache
         return caches.match(event.request).then((cachedResponse) => {
           if (cachedResponse) {
             return cachedResponse;
           }
-          // If not in cache and it's a navigation request, return index.html
           if (event.request.mode === 'navigate') {
             return caches.match('/');
           }
