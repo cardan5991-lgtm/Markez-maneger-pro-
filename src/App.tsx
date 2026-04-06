@@ -41,7 +41,7 @@ import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { db, auth } from './firebase';
 import { collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, addDoc } from 'firebase/firestore';
-import { signInWithRedirect, GoogleAuthProvider, signOut, onAuthStateChanged } from 'firebase/auth';
+import { signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from 'firebase/auth';
 import { 
   DashboardView, 
   OrdersView, 
@@ -567,7 +567,7 @@ export default function App() {
     try {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
-      await signInWithRedirect(auth, provider);
+      await signInWithPopup(auth, provider);
       // Ensure user document exists
       if (auth.currentUser) {
         const userRef = doc(db, 'users', auth.currentUser.uid);
