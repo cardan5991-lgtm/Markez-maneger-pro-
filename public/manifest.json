@@ -1,29 +1,29 @@
 {
   "id": "/",
   "short_name": "Markez Pro",
-  "name": "Markez Manager Pro +",
+  "name": "Markez Manager Pro V9",
   "description": "Panel de control y gestión financiera para tapicería.",
   "icons": [
     {
-      "src": "/icon-192-final.png",
+      "src": "https://markez-maneger-pro.vercel.app/icon-192-v9.png",
       "type": "image/png",
       "sizes": "192x192",
       "purpose": "any"
     },
     {
-      "src": "/icon-512-final.png",
+      "src": "https://markez-maneger-pro.vercel.app/icon-512-v9.png",
       "type": "image/png",
       "sizes": "512x512",
       "purpose": "any"
     },
     {
-      "src": "/icon-512-maskable-final.png",
+      "src": "https://markez-maneger-pro.vercel.app/icon-512-maskable-v9.png",
       "type": "image/png",
       "sizes": "512x512",
       "purpose": "maskable"
     },
     {
-      "src": "/icon-512-monochrome-final.png",
+      "src": "https://markez-maneger-pro.vercel.app/icon-512-monochrome-v9.png",
       "type": "image/png",
       "sizes": "512x512",
       "purpose": "monochrome"

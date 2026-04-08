@@ -1,10 +1,10 @@
-const CACHE_NAME = 'markez-pro-cache-v4';
+const CACHE_NAME = 'markez-pro-cache-v5';
 const CORE_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
-  '/icon-192-final.png',
-  '/icon-512-final.png'
+  '/icon-192-v9.png',
+  '/icon-512-v9.png'
 ];
 
 self.addEventListener('install', (event) => {
