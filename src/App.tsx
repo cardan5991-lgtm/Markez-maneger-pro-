@@ -41,7 +41,7 @@ import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { db, auth } from './firebase';
 import { collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, addDoc } from 'firebase/firestore';
-import { signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from 'firebase/auth';
+import { signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signOut, onAuthStateChanged } from 'firebase/auth';
 import { 
   DashboardView, 
   OrdersView, 
@@ -288,6 +288,27 @@ export default function App() {
   }, [isDarkMode, selectedTheme]);
 
   useEffect(() => {
+    // Handle redirect result for mobile PWAs/WebViews
+    getRedirectResult(auth).then(async (result) => {
+      if (result && result.user) {
+        const userRef = doc(db, 'users', result.user.uid);
+        const userSnap = await getDoc(userRef);
+        if (!userSnap.exists()) {
+          await setDoc(userRef, {
+            uid: result.user.uid,
+            role: 'user',
+            business_name: 'Markez Tapicería',
+            address: '',
+            phone: '',
+            logo_url: '',
+            use_whatsapp_business: false
+          });
+        }
+      }
+    }).catch((error) => {
+      console.error("Redirect login error:", error);
+    });
+
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         setIsLoggedIn(true);
@@ -567,21 +588,33 @@ export default function App() {
     try {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
-      await signInWithPopup(auth, provider);
-      // Ensure user document exists
-      if (auth.currentUser) {
-        const userRef = doc(db, 'users', auth.currentUser.uid);
-        const userSnap = await getDoc(userRef);
-        if (!userSnap.exists()) {
-          await setDoc(userRef, {
-            uid: auth.currentUser.uid,
-            role: 'user',
-            business_name: 'Markez Tapicería',
-            address: '',
-            phone: '',
-            logo_url: '',
-            use_whatsapp_business: false
-          });
+      
+      const isIframe = window.self !== window.top;
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
+      
+      if (!isIframe && (isMobile || isStandalone)) {
+        // Use redirect for mobile PWAs and WebViews (like WebIntoApp)
+        await signInWithRedirect(auth, provider);
+        // Code below won't execute because the page redirects
+      } else {
+        // Use popup for desktop and iframes
+        await signInWithPopup(auth, provider);
+        // Ensure user document exists
+        if (auth.currentUser) {
+          const userRef = doc(db, 'users', auth.currentUser.uid);
+          const userSnap = await getDoc(userRef);
+          if (!userSnap.exists()) {
+            await setDoc(userRef, {
+              uid: auth.currentUser.uid,
+              role: 'user',
+              business_name: 'Markez Tapicería',
+              address: '',
+              phone: '',
+              logo_url: '',
+              use_whatsapp_business: false
+            });
+          }
         }
       }
     } catch (err: any) {
