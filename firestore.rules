@@ -64,7 +64,7 @@ service cloud.firestore {
     }
 
     function uidNotModified() {
-      return !('uid' in request.resource.data) || request.resource.data.uid == resource.data.uid;
+      return !('uid' in request.resource.data) || !('uid' in resource.data) || request.resource.data.uid == resource.data.uid;
     }
 
     function hasRequiredFields(fields) {
@@ -172,7 +172,7 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isOwner(userId);
       allow create: if isOwner(userId) && isValidUser() && uidUnchanged() && (request.resource.data.role == 'user' || isAdmin());
-      allow update: if isOwner(userId) && isValidUser() && uidNotModified() && (request.resource.data.role == resource.data.role || isAdmin());
+      allow update: if isOwner(userId) && isValidUser() && uidNotModified() && (request.resource.data.role == resource.data.role || (!('role' in resource.data) && request.resource.data.role == 'user') || isAdmin());
       allow delete: if isOwner(userId);
 
       match /limits/{limitId} {

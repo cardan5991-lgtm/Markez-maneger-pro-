@@ -1169,20 +1169,25 @@ export const SettingsView = React.memo(({
                       }
                     } else {
                       setToast({ message: 'No se pudo generar el token de notificación.', type: 'error' });
+                      setTimeout(() => setToast(null), 4000);
                     }
                   } catch (tokenErr: any) {
                     console.error('Error getting token:', tokenErr);
                     setToast({ message: `Error de conexión: ${tokenErr.message || 'Desconocido'}`, type: 'error' });
+                    setTimeout(() => setToast(null), 4000);
                   }
                 } else {
                   setToast({ message: 'Servicio de mensajería no disponible.', type: 'error' });
+                  setTimeout(() => setToast(null), 4000);
                 }
               } else {
                 setToast({ message: 'Permiso denegado. Revisa la configuración de tu navegador.', type: 'error' });
+                setTimeout(() => setToast(null), 4000);
               }
             } catch (e) {
               console.error(e);
               setToast({ message: 'Error al solicitar permiso de notificaciones.', type: 'error' });
+              setTimeout(() => setToast(null), 4000);
             }
           }}
           className="w-full py-4 bg-primary/10 border border-primary/20 hover:bg-primary/20 text-primary rounded-xl font-bold transition-all flex items-center justify-center gap-2"
