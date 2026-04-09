@@ -1399,17 +1399,13 @@ Usuario: ${message}`;
       doc.text('¡Gracias por su preferencia!', 105, 270, { align: 'center' });
       doc.text(isQuote ? 'Esta cotización tiene una vigencia de 15 días.' : 'Este documento es un comprobante de su pedido.', 105, 275, { align: 'center' });
 
-      // Save the PDF
+      // Generate file name
       const fileName = `${isQuote ? 'Cotizacion' : 'Nota_Remision'}_${order.customer_name.replace(/\s+/g, '_')}.pdf`;
-      doc.save(fileName);
 
-      // Share via Web Share API if available
+      // 1. Try Web Share API first (Best for Android WebViews)
       try {
         const pdfBlob = doc.output('blob');
         const file = new File([pdfBlob], fileName, { type: 'application/pdf' });
-        
-        // Check if we are in a WebView/Standalone app
-        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone || window.self !== window.top;
         
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
           await navigator.share({
@@ -1417,21 +1413,32 @@ Usuario: ${message}`;
             title: isQuote ? 'Cotización' : 'Nota de Remisión',
             text: isQuote ? `Estimado/a ${order.customer_name}, le compartimos la cotización solicitada.` : `Estimado/a ${order.customer_name}, le compartimos su nota de remisión.`,
           });
-        } else if (!isStandalone) {
-          // Only fallback to WhatsApp web if NOT in a WebView/App. 
-          // In an app, the download dialog is enough, redirecting to WhatsApp web breaks the app flow.
-          const text = isQuote 
-            ? `Estimado/a ${order.customer_name}, le compartimos la cotización solicitada por el trabajo de ${order.work_type}. Enseguida le enviaremos el documento PDF.`
-            : `Estimado/a ${order.customer_name}, es un placer saludarle. Le informamos que su nota de remisión por el trabajo de ${order.work_type} ha sido generada. Enseguida le enviaremos el documento PDF. Agradecemos su preferencia.`;
-          const url = `https://wa.me/52${order.phone}?text=${encodeURIComponent(text)}`;
-          window.open(url, '_blank');
+          setToast({ message: 'Documento compartido exitosamente', type: 'success' });
+          setTimeout(() => setToast(null), 3000);
+          return; // Stop here if share was successful
         }
       } catch (shareError: any) {
         if (shareError.name === 'AbortError' || (shareError.message && shareError.message.includes('canceled'))) {
-          // User canceled the share, do nothing
-          return;
+          return; // User manually canceled the share sheet
         }
-        console.error("Error sharing:", shareError);
+        console.error("Error sharing via Web Share API:", shareError);
+      }
+
+      // 2. Fallback: Try Base64 Download (Works better in some WebViews than Blob)
+      try {
+        const base64URI = doc.output('datauristring');
+        const link = document.createElement('a');
+        link.href = base64URI;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setToast({ message: 'Descargando documento...', type: 'success' });
+        setTimeout(() => setToast(null), 3000);
+      } catch (fallbackError) {
+        console.error("Base64 download failed, trying standard save:", fallbackError);
+        // 3. Final Fallback: Standard jsPDF save
+        doc.save(fileName);
       }
     } catch (error) {
       console.error("Error generating PDF:", error);
