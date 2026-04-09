@@ -41,7 +41,7 @@ import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { db, auth } from './firebase';
 import { collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, addDoc } from 'firebase/firestore';
-import { signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signOut, onAuthStateChanged } from 'firebase/auth';
+import { signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signOut, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 import { 
   DashboardView, 
   OrdersView, 
@@ -135,6 +135,11 @@ export default function App() {
   const [limits, setLimits] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
+  
+  // Auth state
+  const [authMode, setAuthMode] = useState<'google' | 'email_login' | 'email_register'>('google');
+  const [emailInput, setEmailInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
 
   const [insights, setInsights] = useState<string | null>(null);
   const [chatMessages, setChatMessages] = useState<{role: 'user' | 'model', text: string, timestamp: string}[]>([]);
@@ -577,6 +582,49 @@ export default function App() {
       setMonthlyReportReady(null);
     }
   }, [validTransactions, isLoggedIn, snoozedMonthlyReportKey]);
+
+  const handleEmailAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isLoggingInRef.current) return;
+    
+    if (!emailInput || !passwordInput) {
+      setToast({ message: 'Por favor ingresa correo y contraseña', type: 'error' });
+      return;
+    }
+
+    isLoggingInRef.current = true;
+    setIsLoggingIn(true);
+
+    try {
+      if (authMode === 'email_register') {
+        const userCredential = await createUserWithEmailAndPassword(auth, emailInput, passwordInput);
+        const userRef = doc(db, 'users', userCredential.user.uid);
+        await setDoc(userRef, {
+          uid: userCredential.user.uid,
+          role: 'user',
+          business_name: 'Markez Tapicería',
+          address: '',
+          phone: '',
+          logo_url: '',
+          use_whatsapp_business: false
+        });
+      } else {
+        await signInWithEmailAndPassword(auth, emailInput, passwordInput);
+      }
+    } catch (err: any) {
+      console.error("Email auth error:", err);
+      let errorMessage = 'Error de autenticación';
+      if (err.code === 'auth/email-already-in-use') errorMessage = 'El correo ya está registrado.';
+      if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') errorMessage = 'Correo o contraseña incorrectos.';
+      if (err.code === 'auth/weak-password') errorMessage = 'La contraseña debe tener al menos 6 caracteres.';
+      
+      setToast({ message: errorMessage, type: 'error' });
+      setTimeout(() => setToast(null), 5000);
+    } finally {
+      isLoggingInRef.current = false;
+      setIsLoggingIn(false);
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1360,20 +1408,22 @@ Usuario: ${message}`;
         const pdfBlob = doc.output('blob');
         const file = new File([pdfBlob], fileName, { type: 'application/pdf' });
         
+        // Check if we are in a WebView/Standalone app
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone || window.self !== window.top;
+        
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
           await navigator.share({
             files: [file],
             title: isQuote ? 'Cotización' : 'Nota de Remisión',
             text: isQuote ? `Estimado/a ${order.customer_name}, le compartimos la cotización solicitada.` : `Estimado/a ${order.customer_name}, le compartimos su nota de remisión.`,
           });
-        } else {
-          // Fallback: open WhatsApp with text
+        } else if (!isStandalone) {
+          // Only fallback to WhatsApp web if NOT in a WebView/App. 
+          // In an app, the download dialog is enough, redirecting to WhatsApp web breaks the app flow.
           const text = isQuote 
             ? `Estimado/a ${order.customer_name}, le compartimos la cotización solicitada por el trabajo de ${order.work_type}. Enseguida le enviaremos el documento PDF.`
             : `Estimado/a ${order.customer_name}, es un placer saludarle. Le informamos que su nota de remisión por el trabajo de ${order.work_type} ha sido generada. Enseguida le enviaremos el documento PDF. Agradecemos su preferencia.`;
-          const url = profile.use_whatsapp_business 
-            ? `https://wa.me/52${order.phone}?text=${encodeURIComponent(text)}`
-            : `https://api.whatsapp.com/send?phone=52${order.phone}&text=${encodeURIComponent(text)}`;
+          const url = `https://wa.me/52${order.phone}?text=${encodeURIComponent(text)}`;
           window.open(url, '_blank');
         }
       } catch (shareError: any) {
@@ -1382,14 +1432,6 @@ Usuario: ${message}`;
           return;
         }
         console.error("Error sharing:", shareError);
-        // Fallback to just opening WhatsApp if sharing fails
-        const text = isQuote 
-          ? `Estimado/a ${order.customer_name}, le compartimos la cotización solicitada por el trabajo de ${order.work_type}. Enseguida le enviaremos el documento PDF.`
-          : `Estimado/a ${order.customer_name}, es un placer saludarle. Le informamos que su nota de remisión por el trabajo de ${order.work_type} ha sido generada. Enseguida le enviaremos el documento PDF. Agradecemos su preferencia.`;
-        const url = profile.use_whatsapp_business 
-          ? `https://wa.me/52${order.phone}?text=${encodeURIComponent(text)}`
-          : `https://api.whatsapp.com/send?phone=52${order.phone}&text=${encodeURIComponent(text)}`;
-        window.open(url, '_blank');
       }
     } catch (error) {
       console.error("Error generating PDF:", error);
@@ -2152,21 +2194,88 @@ Usuario: ${message}`;
           </div>
 
           <div className="space-y-4">
-            <button onClick={handleLogin} disabled={isLoggingIn} className="btn-primary w-full py-4 text-lg flex items-center justify-center gap-2 disabled:opacity-50">
-              {isLoggingIn ? (
-                <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-              ) : (
-                <svg viewBox="0 0 24 24" width="24" height="24" xmlns="http://www.w3.org/2000/svg">
-                  <g transform="matrix(1, 0, 0, 1, 27.009001, -39.238998)">
-                    <path fill="#4285F4" d="M -3.264 51.509 C -3.264 50.719 -3.334 49.969 -3.454 49.239 L -14.754 49.239 L -14.754 53.749 L -8.284 53.749 C -8.574 55.229 -9.424 56.479 -10.684 57.329 L -10.684 60.329 L -6.824 60.329 C -4.564 58.239 -3.264 55.159 -3.264 51.509 Z"/>
-                    <path fill="#34A853" d="M -14.754 63.239 C -11.514 63.239 -8.804 62.159 -6.824 60.329 L -10.684 57.329 C -11.764 58.049 -13.134 58.489 -14.754 58.489 C -17.884 58.489 -20.534 56.379 -21.484 53.529 L -25.464 53.529 L -25.464 56.619 C -23.494 60.539 -19.444 63.239 -14.754 63.239 Z"/>
-                    <path fill="#FBBC05" d="M -21.484 53.529 C -21.734 52.809 -21.864 52.039 -21.864 51.239 C -21.864 50.439 -21.724 49.669 -21.484 48.949 L -21.484 45.859 L -25.464 45.859 C -26.284 47.479 -26.754 49.299 -26.754 51.239 C -26.754 53.179 -26.284 54.999 -25.464 56.619 L -21.484 53.529 Z"/>
-                    <path fill="#EA4335" d="M -14.754 43.989 C -12.984 43.989 -11.404 44.599 -10.154 45.789 L -6.734 42.369 C -8.804 40.429 -11.514 39.239 -14.754 39.239 C -19.444 39.239 -23.494 41.939 -25.464 45.859 L -21.484 48.949 C -20.534 46.099 -17.884 43.989 -14.754 43.989 Z"/>
-                  </g>
-                </svg>
-              )}
-              {isLoggingIn ? 'Iniciando sesión...' : 'Continuar con Google'}
-            </button>
+            {authMode === 'google' ? (
+              <>
+                <button onClick={handleLogin} disabled={isLoggingIn} className="btn-primary w-full py-4 text-lg flex items-center justify-center gap-2 disabled:opacity-50">
+                  {isLoggingIn ? (
+                    <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  ) : (
+                    <svg viewBox="0 0 24 24" width="24" height="24" xmlns="http://www.w3.org/2000/svg">
+                      <g transform="matrix(1, 0, 0, 1, 27.009001, -39.238998)">
+                        <path fill="#4285F4" d="M -3.264 51.509 C -3.264 50.719 -3.334 49.969 -3.454 49.239 L -14.754 49.239 L -14.754 53.749 L -8.284 53.749 C -8.574 55.229 -9.424 56.479 -10.684 57.329 L -10.684 60.329 L -6.824 60.329 C -4.564 58.239 -3.264 55.159 -3.264 51.509 Z"/>
+                        <path fill="#34A853" d="M -14.754 63.239 C -11.514 63.239 -8.804 62.159 -6.824 60.329 L -10.684 57.329 C -11.764 58.049 -13.134 58.489 -14.754 58.489 C -17.884 58.489 -20.534 56.379 -21.484 53.529 L -25.464 53.529 L -25.464 56.619 C -23.494 60.539 -19.444 63.239 -14.754 63.239 Z"/>
+                        <path fill="#FBBC05" d="M -21.484 53.529 C -21.734 52.809 -21.864 52.039 -21.864 51.239 C -21.864 50.439 -21.724 49.669 -21.484 48.949 L -21.484 45.859 L -25.464 45.859 C -26.284 47.479 -26.754 49.299 -26.754 51.239 C -26.754 53.179 -26.284 54.999 -25.464 56.619 L -21.484 53.529 Z"/>
+                        <path fill="#EA4335" d="M -14.754 43.989 C -12.984 43.989 -11.404 44.599 -10.154 45.789 L -6.734 42.369 C -8.804 40.429 -11.514 39.239 -14.754 39.239 C -19.444 39.239 -23.494 41.939 -25.464 45.859 L -21.484 48.949 C -20.534 46.099 -17.884 43.989 -14.754 43.989 Z"/>
+                      </g>
+                    </svg>
+                  )}
+                  {isLoggingIn ? 'Iniciando sesión...' : 'Continuar con Google'}
+                </button>
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-gray-800"></div>
+                  </div>
+                  <div className="relative flex justify-center text-sm">
+                    <span className="px-2 bg-[#111] text-gray-500">O</span>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setAuthMode('email_login')} 
+                  className="w-full py-3 text-gray-400 hover:text-white border border-gray-800 rounded-xl transition-colors"
+                >
+                  Usar Correo y Contraseña
+                </button>
+              </>
+            ) : (
+              <form onSubmit={handleEmailAuth} className="space-y-4">
+                <div className="space-y-3">
+                  <input
+                    type="email"
+                    placeholder="Correo electrónico"
+                    value={emailInput}
+                    onChange={(e) => setEmailInput(e.target.value)}
+                    className="input-field w-full bg-[#1A1A1A] border-gray-800"
+                    required
+                  />
+                  <input
+                    type="password"
+                    placeholder="Contraseña"
+                    value={passwordInput}
+                    onChange={(e) => setPasswordInput(e.target.value)}
+                    className="input-field w-full bg-[#1A1A1A] border-gray-800"
+                    required
+                  />
+                </div>
+                <button 
+                  type="submit" 
+                  disabled={isLoggingIn} 
+                  className="btn-primary w-full py-4 text-lg flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {isLoggingIn ? (
+                    <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  ) : (
+                    authMode === 'email_login' ? 'Iniciar Sesión' : 'Crear Cuenta'
+                  )}
+                </button>
+                
+                <div className="flex flex-col items-center gap-2 pt-2">
+                  <button 
+                    type="button"
+                    onClick={() => setAuthMode(authMode === 'email_login' ? 'email_register' : 'email_login')}
+                    className="text-sm text-primary hover:underline"
+                  >
+                    {authMode === 'email_login' ? '¿No tienes cuenta? Regístrate' : '¿Ya tienes cuenta? Inicia sesión'}
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => setAuthMode('google')}
+                    className="text-sm text-gray-500 hover:text-white transition-colors mt-2"
+                  >
+                    Volver a Google
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
           
           <p className="text-center text-[10px] text-gray-600 uppercase font-black tracking-widest">
