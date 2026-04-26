@@ -637,16 +637,7 @@ export default function App() {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
       
-      const isIframe = window.self !== window.top;
-      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-      const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
-      
-      if (!isIframe && (isMobile || isStandalone)) {
-        // En WebIntoApp y dispositivos móviles, redirigir es mucho más estable
-        // que usar popups.
-        await signInWithRedirect(auth, provider);
-        // El código de abajo no se ejecuta en redirect
-      } else {
+      try {
         await signInWithPopup(auth, provider);
         
         // Ensure user document exists for popup
@@ -664,6 +655,16 @@ export default function App() {
               use_whatsapp_business: false
             });
           }
+        }
+      } catch (innerErr: any) {
+        console.warn("Popup login issue:", innerErr);
+        if (innerErr.code === 'auth/popup-blocked') {
+          // Solamente forzamos redirect si realmente se bloqueó el popup.
+          // En PWAs standalone, signInWithPopup usa Custom Tabs nativos que funcionan muy bien.
+          await signInWithRedirect(auth, provider);
+          return; // Detenemos aquí para evitar que el finally cambie el estado de loading mientras redirige
+        } else {
+          throw innerErr;
         }
       }
     } catch (err: any) {
