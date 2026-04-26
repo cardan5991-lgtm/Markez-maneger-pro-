@@ -293,27 +293,7 @@ export default function App() {
   }, [isDarkMode, selectedTheme]);
 
   useEffect(() => {
-    // Handle redirect result for mobile PWAs/WebViews
-    getRedirectResult(auth).then(async (result) => {
-      if (result && result.user) {
-        const userRef = doc(db, 'users', result.user.uid);
-        const userSnap = await getDoc(userRef);
-        if (!userSnap.exists()) {
-          await setDoc(userRef, {
-            uid: result.user.uid,
-            role: 'user',
-            business_name: 'Markez Tapicería',
-            address: '',
-            phone: '',
-            logo_url: '',
-            use_whatsapp_business: false
-          });
-        }
-      }
-    }).catch((error) => {
-      console.error("Redirect login error:", error);
-    });
-
+    // getRedirectResult removed as it was causing missing state errors in WebView
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         setIsLoggedIn(true);
@@ -637,41 +617,32 @@ export default function App() {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
       
-      const isIframe = window.self !== window.top;
-      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-      const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
+      // En WebIntoApp (y otros WebViews), los popups o redirext de Google suelen fallar
+      // porque Google bloquea la autenticación Oauth 2.0 en WebViews incrustados
+      // o por partición de memoria (sessionStorage).
+      await signInWithPopup(auth, provider);
       
-      if (!isIframe && (isMobile || isStandalone)) {
-        // Use redirect for mobile PWAs and WebViews (like WebIntoApp)
-        await signInWithRedirect(auth, provider);
-        // Code below won't execute because the page redirects
-      } else {
-        // Use popup for desktop and iframes
-        await signInWithPopup(auth, provider);
-        // Ensure user document exists
-        if (auth.currentUser) {
-          const userRef = doc(db, 'users', auth.currentUser.uid);
-          const userSnap = await getDoc(userRef);
-          if (!userSnap.exists()) {
-            await setDoc(userRef, {
-              uid: auth.currentUser.uid,
-              role: 'user',
-              business_name: 'Markez Tapicería',
-              address: '',
-              phone: '',
-              logo_url: '',
-              use_whatsapp_business: false
-            });
-          }
+      // Ensure user document exists
+      if (auth.currentUser) {
+        const userRef = doc(db, 'users', auth.currentUser.uid);
+        const userSnap = await getDoc(userRef);
+        if (!userSnap.exists()) {
+          await setDoc(userRef, {
+            uid: auth.currentUser.uid,
+            role: 'user',
+            business_name: 'Markez Tapicería',
+            address: '',
+            phone: '',
+            logo_url: '',
+            use_whatsapp_business: false
+          });
         }
       }
     } catch (err: any) {
       console.error("Login error:", err);
-      let errorMessage = 'Error al iniciar sesión';
+      let errorMessage = 'Error con Google. Por favor, usa "Correo y Contraseña".';
       if (err.code === 'auth/popup-blocked') {
         errorMessage = 'Por favor, permite las ventanas emergentes (popups) para iniciar sesión.';
-      } else if (err.message && err.message.includes('INTERNAL ASSERTION FAILED')) {
-        errorMessage = 'Error interno de autenticación. Por favor, recarga la página e intenta de nuevo.';
       }
       setToast({ message: errorMessage, type: 'error' });
       setTimeout(() => setToast(null), 5000);
