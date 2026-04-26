@@ -293,7 +293,27 @@ export default function App() {
   }, [isDarkMode, selectedTheme]);
 
   useEffect(() => {
-    // getRedirectResult removed as it was causing missing state errors in WebView
+    // Handle redirect result for mobile PWAs/WebViews
+    getRedirectResult(auth).then(async (result) => {
+      if (result && result.user) {
+        const userRef = doc(db, 'users', result.user.uid);
+        const userSnap = await getDoc(userRef);
+        if (!userSnap.exists()) {
+          await setDoc(userRef, {
+            uid: result.user.uid,
+            role: 'user',
+            business_name: 'Markez Tapicería',
+            address: '',
+            phone: '',
+            logo_url: '',
+            use_whatsapp_business: false
+          });
+        }
+      }
+    }).catch((error) => {
+      console.error("Redirect login error:", error);
+    });
+
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         setIsLoggedIn(true);
@@ -617,25 +637,33 @@ export default function App() {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
       
-      // En WebIntoApp (y otros WebViews), los popups o redirext de Google suelen fallar
-      // porque Google bloquea la autenticación Oauth 2.0 en WebViews incrustados
-      // o por partición de memoria (sessionStorage).
-      await signInWithPopup(auth, provider);
+      const isIframe = window.self !== window.top;
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
       
-      // Ensure user document exists
-      if (auth.currentUser) {
-        const userRef = doc(db, 'users', auth.currentUser.uid);
-        const userSnap = await getDoc(userRef);
-        if (!userSnap.exists()) {
-          await setDoc(userRef, {
-            uid: auth.currentUser.uid,
-            role: 'user',
-            business_name: 'Markez Tapicería',
-            address: '',
-            phone: '',
-            logo_url: '',
-            use_whatsapp_business: false
-          });
+      if (!isIframe && (isMobile || isStandalone)) {
+        // En WebIntoApp y dispositivos móviles, redirigir es mucho más estable
+        // que usar popups.
+        await signInWithRedirect(auth, provider);
+        // El código de abajo no se ejecuta en redirect
+      } else {
+        await signInWithPopup(auth, provider);
+        
+        // Ensure user document exists for popup
+        if (auth.currentUser) {
+          const userRef = doc(db, 'users', auth.currentUser.uid);
+          const userSnap = await getDoc(userRef);
+          if (!userSnap.exists()) {
+            await setDoc(userRef, {
+              uid: auth.currentUser.uid,
+              role: 'user',
+              business_name: 'Markez Tapicería',
+              address: '',
+              phone: '',
+              logo_url: '',
+              use_whatsapp_business: false
+            });
+          }
         }
       }
     } catch (err: any) {
