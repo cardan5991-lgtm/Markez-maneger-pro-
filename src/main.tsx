@@ -53,24 +53,11 @@ window.addEventListener('beforeinstallprompt', (e) => {
   window.dispatchEvent(new Event('pwa-install-ready'));
 });
 
-// Register Service Worker for PWA (now handled in index.html for PWABuilder compatibility)
-// The logic for updates is kept here if needed, but registration is in index.html
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.ready.then(reg => {
-    reg.onupdatefound = () => {
-      const installingWorker = reg.installing;
-      if (installingWorker) {
-        installingWorker.onstatechange = () => {
-          if (installingWorker.state === 'installed') {
-            if (navigator.serviceWorker.controller) {
-              console.log('New content is available; please refresh.');
-            } else {
-              console.log('Content is cached for offline use.');
-            }
-          }
-        };
-      }
-    };
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js")
+      .then(reg => console.log("Service Worker registrado:", reg))
+      .catch(err => console.error("Error al registrar SW:", err));
   });
 }
 

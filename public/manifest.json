@@ -1,37 +1,34 @@
 {
-  "id": "/",
-  "short_name": "Markez Pro",
-  "name": "Markez Manager Pro V9",
-  "description": "Panel de control y gestión financiera para tapicería.",
+  "name": "Markez Manager Pro",
+  "short_name": "Markez",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0d47a1",
+  "orientation": "portrait",
   "icons": [
     {
-      "src": "https://markez-maneger-pro.vercel.app/icon-192-v9.png",
-      "type": "image/png",
+      "src": "/icon-192-final.png",
       "sizes": "192x192",
-      "purpose": "any"
+      "type": "image/png"
     },
     {
-      "src": "https://markez-maneger-pro.vercel.app/icon-512-v9.png",
-      "type": "image/png",
+      "src": "/icon-512-final.png",
       "sizes": "512x512",
-      "purpose": "any"
+      "type": "image/png"
     },
     {
-      "src": "https://markez-maneger-pro.vercel.app/icon-512-maskable-v9.png",
-      "type": "image/png",
+      "src": "/icon-512-maskable-final.png",
       "sizes": "512x512",
+      "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "https://markez-maneger-pro.vercel.app/icon-512-monochrome-v9.png",
-      "type": "image/png",
+      "src": "/icon-512-monochrome-final.png",
       "sizes": "512x512",
+      "type": "image/png",
       "purpose": "monochrome"
     }
-  ],
-  "start_url": "/",
-  "background_color": "#000000",
-  "display": "standalone",
-  "theme_color": "#000000",
-  "orientation": "portrait"
+  ]
 }
