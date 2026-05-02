@@ -10,14 +10,16 @@
   "orientation": "portrait",
   "icons": [
     {
-      "src": "/icon-192-v9.png",
+      "src": "/icon-192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
       "src": "/icon-512-final.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
       "src": "/icon-512-maskable-final.png",
