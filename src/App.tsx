@@ -617,6 +617,7 @@ export default function App() {
       if (err.code === 'auth/email-already-in-use') errorMessage = 'El correo ya está registrado.';
       if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') errorMessage = 'Correo o contraseña incorrectos.';
       if (err.code === 'auth/weak-password') errorMessage = 'La contraseña debe tener al menos 6 caracteres.';
+      if (err.code === 'auth/network-request-failed') errorMessage = 'Error de red. Revisa tu conexión a internet.';
       
       setToast({ message: errorMessage, type: 'error' });
       setTimeout(() => setToast(null), 5000);
@@ -672,6 +673,8 @@ export default function App() {
       let errorMessage = 'Error con Google. Por favor, usa "Correo y Contraseña".';
       if (err.code === 'auth/popup-blocked') {
         errorMessage = 'Por favor, permite las ventanas emergentes (popups) para iniciar sesión.';
+      } else if (err.code === 'auth/network-request-failed') {
+        errorMessage = 'Error de conexión de red para iniciar con Google.';
       }
       setToast({ message: errorMessage, type: 'error' });
       setTimeout(() => setToast(null), 5000);

@@ -7,6 +7,11 @@ self.addEventListener("install", event => {
 });
 
 self.addEventListener("fetch", event => {
+  // No interceptar peticiones que no sean GET (como las de Firebase Auth)
+  if (event.request.method !== "GET") {
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request).then(response => {
       return response || fetch(event.request);
