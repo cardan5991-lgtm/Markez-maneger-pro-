@@ -1,9 +1,27 @@
+const CACHE_NAME = "markez-cache-v2";
+
 self.addEventListener("install", event => {
+  self.skipWaiting();
   event.waitUntil(
-    caches.open("markez-cache").then(cache => {
+    caches.open(CACHE_NAME).then(cache => {
       return cache.addAll(["/", "/index.html"]);
     })
   );
+});
+
+self.addEventListener("activate", event => {
+  event.waitUntil(
+    caches.keys().then(cacheNames => {
+      return Promise.all(
+        cacheNames.map(cacheName => {
+          if (cacheName !== CACHE_NAME) {
+            return caches.delete(cacheName);
+          }
+        })
+      );
+    })
+  );
+  self.clients.claim();
 });
 
 self.addEventListener("fetch", event => {
