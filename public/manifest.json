@@ -10,27 +10,27 @@
   "orientation": "portrait",
   "icons": [
     {
-      "src": "logo-pwabuilder-192.png",
+      "src": "logo-192.svg",
       "sizes": "192x192",
-      "type": "image/png",
+      "type": "image/svg+xml",
       "purpose": "any"
     },
     {
-      "src": "logo-pwabuilder-512.png",
+      "src": "logo-512.svg",
       "sizes": "512x512",
-      "type": "image/png",
+      "type": "image/svg+xml",
       "purpose": "any"
     },
     {
-      "src": "logo-pwabuilder-maskable-512.png",
+      "src": "logo-maskable-512.svg",
       "sizes": "512x512",
-      "type": "image/png",
+      "type": "image/svg+xml",
       "purpose": "maskable"
     },
     {
-      "src": "logo-pwabuilder-monochrome-512.png",
+      "src": "logo-monochrome-512.svg",
       "sizes": "512x512",
-      "type": "image/png",
+      "type": "image/svg+xml",
       "purpose": "monochrome"
     }
   ],
