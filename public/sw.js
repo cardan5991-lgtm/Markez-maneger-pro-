@@ -1,4 +1,4 @@
-const CACHE_NAME = "markez-cache-v10";
+const CACHE_NAME = "markez-cache-v11";
 
 self.addEventListener("install", event => {
   self.skipWaiting();
