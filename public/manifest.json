@@ -1,7 +1,7 @@
 {
   "name": "Markez Manager Pro",
   "short_name": "Markez",
-  "description": "Panel de Control y administrativo de Tapicería para MManager.",
+  "description": "Panel de Control y administrativo de Tapicería para MManager",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
