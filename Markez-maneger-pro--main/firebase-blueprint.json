@@ -1,0 +1,99 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Stores user-specific settings and profile information.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "business_name": { "type": "string", "description": "Name of the business" },
+        "phone": { "type": "string", "description": "Business phone number" },
+        "address": { "type": "string", "description": "Business address" },
+        "logo_url": { "type": "string", "description": "URL of the business logo" },
+        "use_whatsapp_business": { "type": "boolean", "description": "Whether to use WhatsApp Business links" },
+        "role": { "type": "string", "enum": ["admin", "user"] }
+      },
+      "required": ["uid", "role"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "A customer order or quote.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Owner UID" },
+        "customer_name": { "type": "string" },
+        "phone": { "type": "string" },
+        "address": { "type": "string" },
+        "delivery_date": { "type": "string" },
+        "work_type": { "type": "string" },
+        "material": { "type": "string" },
+        "description": { "type": "string" },
+        "total": { "type": "number" },
+        "advance": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "completed"] },
+        "registration_date": { "type": "string" },
+        "is_quote": { "type": "boolean" }
+      },
+      "required": ["uid", "customer_name", "phone", "delivery_date", "work_type", "total", "advance", "status", "registration_date"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "A financial transaction (income or expense).",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Owner UID" },
+        "date": { "type": "string" },
+        "amount": { "type": "number" },
+        "type": { "type": "string", "enum": ["income", "expense"] },
+        "category": { "type": "string" },
+        "concept": { "type": "string" },
+        "order_id": { "type": "string" }
+      },
+      "required": ["uid", "date", "amount", "type", "category", "concept"]
+    },
+    "Limit": {
+      "title": "Limit",
+      "description": "Monthly limit for a specific work type.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "work_type": { "type": "string" },
+        "limit_val": { "type": "number" }
+      },
+      "required": ["uid", "work_type", "limit_val"]
+    },
+    "ChatMessage": {
+      "title": "Chat Message",
+      "description": "A message in the financial AI chat.",
+      "type": "object",
+      "properties": {
+        "role": { "type": "string", "enum": ["user", "model"] },
+        "text": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["role", "text", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profiles and settings."
+    },
+    "/users/{userId}/limits/{limitId}": {
+      "schema": { "$ref": "#/entities/Limit" },
+      "description": "Monthly limits belonging to a user."
+    },
+    "/users/{userId}/financial_chat/{chatId}": {
+      "schema": { "$ref": "#/entities/ChatMessage" },
+      "description": "Chat messages with the AI advisor."
+    },
+    "/users/{userId}/orders/{orderId}": {
+      "schema": { "$ref": "#/entities/Order" },
+      "description": "Orders and quotes belonging to a user."
+    },
+    "/users/{userId}/transactions/{transactionId}": {
+      "schema": { "$ref": "#/entities/Transaction" },
+      "description": "Financial transactions belonging to a user."
+    }
+  }
+}
