@@ -1,0 +1,9 @@
+{
+  "scopes": [
+    {
+      "url": "/",
+      "description": "Ámbito principal de la aplicación Markez Manager Pro"
+    }
+  ],
+  "comment": "Este archivo define las extensiones de alcance para la PWA. Puedes agregar dominios adicionales aquí si necesitas que múltiples dominios sean considerados parte de tu PWA. Por ejemplo: https://auth.example.com o https://api.example.com"
+}
