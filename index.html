@@ -1,12 +1,8 @@
 <!doctype html>
 <html lang="es">
   <head>
-    <!-- Meta tags esenciales -->
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    
-    <!-- PWA Meta tags -->
-    <meta name="description" content="Aplicación de gestión de proyectos y tareas con almacenamiento offline" />
     <meta name="theme-color" content="#000000" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -14,78 +10,25 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-touch-fullscreen" content="yes" />
     <meta name="format-detection" content="telephone=no" />
-    <meta name="msapplication-TileColor" content="#000000" />
-    <meta name="msapplication-config" content="/browserconfig.xml" />
-    
-    <!-- Iconos -->
-    <link rel="icon" type="image/png" sizes="192x192" href="/extracted_icons/ios/192.png" />
-    <link rel="icon" type="image/png" sizes="512x512" href="/extracted_icons/ios/512.png" />
-    <link rel="apple-touch-icon" href="/extracted_icons/ios/192.png" />
-    <link rel="shortcut icon" href="/extracted_icons/ios/192.png" type="image/png" />
-    
-    <!-- Manifest PWA -->
-    <link rel="manifest" href="/manifest.json" />
-    
-    <!-- Preconnect a recursos externos (opcional) -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192x192.png" />
+    <link rel="apple-touch-icon" href="/icon-512.png" />
+    <link rel="manifest" href="/manifest.json?v=2" />
     <title>Markez Manager Pro</title>
   </head>
   <body>
     <div id="root"></div>
-    
-    <!-- Script de registro del Service Worker -->
     <script>
-      // Registrar el Service Worker para funcionalidad offline
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', function() {
-          navigator.serviceWorker.register('/sw.js', { scope: '/' })
-            .then(function(registration) {
-              console.log('✅ Service Worker registrado exitosamente');
-              console.log('Scope:', registration.scope);
-              
-              // Verificar actualizaciones cada 24 horas
-              setInterval(() => {
-                registration.update();
-              }, 1000 * 60 * 60 * 24);
-              
-              // Notificar si hay una nueva versión disponible
-              if (registration.waiting) {
-                console.log('⚠️ Nueva versión del Service Worker disponible');
-              }
-              
-              registration.addEventListener('updatefound', () => {
-                const newWorker = registration.installing;
-                if (newWorker) {
-                  newWorker.addEventListener('statechange', () => {
-                    if (newWorker.state === 'activated') {
-                      console.log('✅ Nueva versión del Service Worker activada');
-                      // Aquí puedes mostrar una notificación al usuario
-                    }
-                  });
-                }
-              });
-            })
-            .catch(function(err) {
-              console.error('❌ Error al registrar Service Worker:', err);
-            });
+          navigator.serviceWorker.register('/sw.js', { scope: '/' }).then(function(registration) {
+            console.log('ServiceWorker registration successful with scope: ', registration.scope);
+          }, function(err) {
+            console.log('ServiceWorker registration failed: ', err);
+          });
         });
-      } else {
-        console.warn('⚠️ Service Workers no soportados en este navegador');
       }
-      
-      // Detectar modo offline
-      window.addEventListener('offline', () => {
-        console.log('📵 Conexión perdida - Modo offline activado');
-      });
-      
-      window.addEventListener('online', () => {
-        console.log('📶 Conexión restaurada - Modo online');
-      });
     </script>
-    
-    <!-- Script principal de la aplicación -->
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
+
