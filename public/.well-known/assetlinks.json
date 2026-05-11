@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "app.vercel.markez_maneger_8i0j2hyu2_cardan5991_lgtms_projects.twa",
+        "sha256_cert_fingerprints": ["B6:0A:86:6A:23:AC:9E:A2:56:5A:93:DC:90:DB:B3:38:68:6C:11:26:2B:BB:86:B2:36:5B:DF:CB:BE:56:C7:EA"]
+      }
+    }]
