@@ -4,10 +4,12 @@
   "description": "Panel de Control y administrativo de Tapicería para MManager",
   "start_url": "/",
   "scope": "/",
-  "display": "fullscreen",
+  "display": "standalone",
+  "display_override": ["fullscreen", "standalone", "minimal-ui"],
   "background_color": "#ffffff",
   "theme_color": "#000000",
   "orientation": "portrait",
+  "categories": ["business", "productivity"],
   "icons": [
     {
       "src": "/icon-192x192.png",
@@ -28,6 +30,15 @@
       "purpose": "maskable"
     }
   ],
+  "shortcuts": [
+    {
+      "name": "Dashboard",
+      "short_name": "Inicio",
+      "description": "Ir al panel de control",
+      "url": "/",
+      "icons": [{ "src": "/icon-192x192.png", "sizes": "192x192" }]
+    }
+  ],
   "screenshots": [
     {
       "src": "/pwa-screenshot-wide.png",
@@ -44,5 +55,7 @@
   ],
   "id": "markez-manager-pro",
   "dir": "auto",
-  "lang": "es"
+  "lang": "es",
+  "related_applications": [],
+  "prefer_related_applications": false
 }
