@@ -230,6 +230,21 @@ export default function App() {
     cutoffKey: string;
   } | null>(null);
   const [snoozedWeeklyReportKey, setSnoozedWeeklyReportKey] = useState<string | null>(null);
+  
+  // PWA Install State
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  
+  useEffect(() => {
+    const handler = (e: any) => {
+      // Prevent the mini-infobar from appearing on mobile
+      e.preventDefault();
+      // Stash the event so it can be triggered later.
+      window.deferredPrompt = e;
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
