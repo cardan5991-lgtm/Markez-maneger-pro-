@@ -53,14 +53,6 @@ window.addEventListener('beforeinstallprompt', (e) => {
   window.dispatchEvent(new Event('pwa-install-ready'));
 });
 
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js")
-      .then(reg => console.log("Service Worker registrado:", reg))
-      .catch(err => console.error("Error al registrar SW:", err));
-  });
-}
-
 // Enforce portrait orientation if supported
 if (typeof screen !== 'undefined' && screen.orientation && (screen.orientation as any).lock) {
   (screen.orientation as any).lock('portrait').catch((err: any) => {
