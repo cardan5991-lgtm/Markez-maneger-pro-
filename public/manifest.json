@@ -4,7 +4,7 @@
   "description": "Panel de Control y administrativo de Tapicería para MManager",
   "start_url": "/",
   "scope": "/",
-  "display": "fullscreen",
+  "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#000000",
   "orientation": "portrait",
@@ -58,7 +58,7 @@
       "form_factor": "narrow"
     }
   ],
-  "id": "markez-manager-pro",
+  "id": "app.vercel.markez_manager_pro",
   "dir": "auto",
   "lang": "es",
   "related_applications": [],
