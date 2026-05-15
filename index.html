@@ -22,35 +22,8 @@
         window.addEventListener('load', function() {
           navigator.serviceWorker.register('/sw.js', { scope: '/' }).then(function(registration) {
             console.log('ServiceWorker registration successful with scope: ', registration.scope);
-            
-            // Attempt to update the service worker immediately and whenever found
-            registration.update();
-            setInterval(() => registration.update(), 1000 * 60 * 60);
-
-            registration.onupdatefound = () => {
-              const installingWorker = registration.installing;
-              if (installingWorker == null) {
-                return;
-              }
-              installingWorker.onstatechange = () => {
-                if (installingWorker.state === 'installed') {
-                  if (navigator.serviceWorker.controller) {
-                    console.log('New content is available; please wait while the app reloads.');
-                    installingWorker.postMessage({ type: 'SKIP_WAITING' });
-                  }
-                }
-              };
-            };
           }, function(err) {
             console.log('ServiceWorker registration failed: ', err);
-          });
-          
-          let refreshing = false;
-          navigator.serviceWorker.addEventListener('controllerchange', () => {
-            if (!refreshing) {
-              refreshing = true;
-              window.location.reload();
-            }
           });
         });
       }
