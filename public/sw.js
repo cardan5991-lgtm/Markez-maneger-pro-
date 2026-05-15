@@ -1,7 +1,15 @@
-const CACHE_NAME = "markez-cache-v17";
+const CACHE_NAME = "markez-cache-v15";
 
 // Default PWABuilder Service Worker functionality
 importScripts('https://storage.googleapis.com/workbox-cdn/releases/6.5.4/workbox-sw.js');
+
+self.addEventListener('install', (event) => {
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(self.clients.claim());
+});
 
 if (workbox) {
   console.log('Workbox is loaded');
