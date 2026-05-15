@@ -35,7 +35,15 @@
       "purpose": "monochrome"
     }
   ],
-  "id": "app.vercel.markez_manager_pro",
+  "shortcuts": [
+    {
+      "name": "Dashboard",
+      "short_name": "Inicio",
+      "description": "Ir al panel de control",
+      "url": "/",
+      "icons": [{ "src": "/icon-192x192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ],
   "screenshots": [
     {
       "src": "/pwa-screenshot-wide.png",
@@ -50,15 +58,7 @@
       "form_factor": "narrow"
     }
   ],
-  "shortcuts": [
-    {
-      "name": "Dashboard",
-      "short_name": "Inicio",
-      "description": "Ir al panel de control",
-      "url": "/",
-      "icons": [{ "src": "/icon-192x192.png", "sizes": "192x192", "type": "image/png" }]
-    }
-  ],
+  "id": "app.vercel.markez_manager_pro",
   "dir": "auto",
   "lang": "es",
   "related_applications": [],
