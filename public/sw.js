@@ -1,4 +1,4 @@
-const CACHE_NAME = 'markez-cache-v19';
+const CACHE_NAME = 'markez-cache-v20';
 const PRECACHE_URLS = [
   '/',
   '/index.html',
@@ -12,7 +12,16 @@ const PRECACHE_URLS = [
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(PRECACHE_URLS))
+      .then(async cache => {
+        // Precargar uno por uno para que si uno falla, no falle todo
+        for (const url of PRECACHE_URLS) {
+          try {
+            await cache.add(url);
+          } catch (e) {
+            console.error('PWA: Error caching ' + url, e);
+          }
+        }
+      })
       .then(() => self.skipWaiting())
   );
 });
