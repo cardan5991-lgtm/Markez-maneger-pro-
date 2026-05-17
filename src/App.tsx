@@ -49,7 +49,7 @@ import {
   SettingsView,
   CalendarView
 } from './components/Views';
-import { PostCreatorModal } from './components/PostCreatorModal';
+import { PostCreatorModal } from './PostCreatorModal';
 
 // --- Types ---
 type Tab = 'dashboard' | 'orders' | 'finances' | 'settings' | 'calendar';
