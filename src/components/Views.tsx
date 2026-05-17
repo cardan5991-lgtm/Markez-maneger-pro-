@@ -1032,15 +1032,15 @@ export const SettingsView = React.memo(({
             
             <div className="space-y-4">
               <button 
-                onClick={() => {
+                onClick={async () => {
                   if (window.deferredPrompt) {
                     window.deferredPrompt.prompt();
-                    window.deferredPrompt.userChoice.then((choiceResult: any) => {
-                      if (choiceResult.outcome === 'accepted') {
-                        setToast({ message: '¡Gracias por instalar la aplicación!', type: 'success' });
-                      }
-                      window.deferredPrompt = null;
-                    });
+                    const { outcome } = await window.deferredPrompt.userChoice;
+                    console.log(`El usuario ${outcome} el prompt de instalación.`);
+                    if (outcome === 'accepted') {
+                      setToast({ message: '¡Gracias por instalar la aplicación!', type: 'success' });
+                    }
+                    window.deferredPrompt = null;
                   } else {
                     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
                     if (isIOS) {

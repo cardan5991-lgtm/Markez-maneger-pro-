@@ -1,41 +1,25 @@
 {
-  "name": "Markez Manager Pro",
+  "name": "Markez Manager",
   "short_name": "Markez",
-  "description": "Panel de Control y administrativo de Tapicería para MManager",
+  "description": "Panel de control y gestión financiera para tapicería.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#000000",
-  "orientation": "portrait",
-  "categories": ["business", "productivity"],
+  "background_color": "#0A0A0A",
+  "theme_color": "#10b981",
+  "orientation": "portrait-primary",
   "icons": [
     {
       "src": "/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any"
+      "purpose": "any maskable"
     },
     {
       "src": "/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/icon-512-maskable.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
-    }
-  ],
-  "shortcuts": [
-    {
-      "name": "Dashboard",
-      "short_name": "Inicio",
-      "description": "Ir al panel de control",
-      "url": "/",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+      "purpose": "any maskable"
     }
   ],
   "screenshots": [
@@ -52,12 +36,21 @@
       "form_factor": "narrow"
     }
   ],
-  "id": "app.vercel.markez_manager_pro",
-  "dir": "auto",
-  "lang": "es",
-  "related_applications": [],
-  "prefer_related_applications": false,
-  "launch_handler": {
-    "client_mode": "navigate-existing"
-  }
+  "categories": ["productivity", "business"],
+  "shortcuts": [
+    {
+      "name": "Nuevo Pedido",
+      "short_name": "Nuevo",
+      "description": "Crear un nuevo pedido",
+      "url": "/orders/new",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
+  ],
+  "prefer_related_applications": false
 }

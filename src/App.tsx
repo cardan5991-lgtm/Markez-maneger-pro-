@@ -245,8 +245,20 @@ export default function App() {
       window.deferredPrompt = e;
       setDeferredPrompt(e);
     };
+    
+    const installHandler = () => {
+      console.log('PWA instalada con éxito!');
+      setDeferredPrompt(null);
+      window.deferredPrompt = null;
+    };
+    
     window.addEventListener('beforeinstallprompt', handler);
-    return () => window.removeEventListener('beforeinstallprompt', handler);
+    window.addEventListener('appinstalled', installHandler);
+    
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handler);
+      window.removeEventListener('appinstalled', installHandler);
+    };
   }, []);
 
   const fileInputRef = useRef<HTMLInputElement>(null);

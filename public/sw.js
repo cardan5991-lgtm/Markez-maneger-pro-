@@ -1,5 +1,5 @@
-const CACHE_NAME = "markez-cache-v17";
-const OFFLINE_URLS = [
+const CACHE_NAME = 'markez-cache-v18';
+const PRECACHE_URLS = [
   '/',
   '/index.html',
   '/manifest.json',
@@ -7,51 +7,35 @@ const OFFLINE_URLS = [
   '/icon-512.png'
 ];
 
-self.addEventListener('install', (event) => {
+self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(OFFLINE_URLS);
-    })
+    caches.open(CACHE_NAME)
+      .then(cache => cache.addAll(PRECACHE_URLS))
+      .then(() => self.skipWaiting())
   );
-  self.skipWaiting();
 });
 
-self.addEventListener('activate', (event) => {
+self.addEventListener('activate', event => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME) {
-            return caches.delete(cacheName);
-          }
-        })
-      );
-    })
+    caches.keys().then(keys =>
+      Promise.all(
+        keys.filter(key => key !== CACHE_NAME)
+            .map(key => caches.delete(key))
+      )
+    ).then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
-self.addEventListener('fetch', (event) => {
+self.addEventListener('fetch', event => {
   if (event.request.mode === 'navigate') {
     event.respondWith(
-      fetch(event.request).catch(() => {
-        return caches.match('/');
-      })
+      caches.match('/index.html')
+        .then(response => response || fetch('/index.html'))
     );
     return;
   }
-
   event.respondWith(
-    caches.match(event.request).then((response) => {
-      return response || fetch(event.request).then((fetchRes) => {
-        return caches.open(CACHE_NAME).then((cache) => {
-          // Solamente cacheamos peticiones GET
-          if (event.request.method === 'GET') {
-            cache.put(event.request, fetchRes.clone());
-          }
-          return fetchRes;
-        });
-      });
-    })
+    caches.match(event.request)
+      .then(response => response || fetch(event.request))
   );
 });

@@ -38,12 +38,14 @@
       });
 
       if ('serviceWorker' in navigator) {
-        window.addEventListener('load', function() {
-          navigator.serviceWorker.register('/sw.js', { scope: '/' }).then(function(registration) {
-            console.log('ServiceWorker registration successful with scope: ', registration.scope);
-          }, function(err) {
-            console.log('ServiceWorker registration failed: ', err);
-          });
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js', { scope: '/' })
+            .then(registration => {
+              console.log('ServiceWorker registrado:', registration.scope);
+            })
+            .catch(error => {
+              console.error('Error al registrar ServiceWorker:', error);
+            });
         });
       }
     </script>
