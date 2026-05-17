@@ -1,10 +1,12 @@
-const CACHE_NAME = 'markez-cache-v18';
+const CACHE_NAME = 'markez-cache-v19';
 const PRECACHE_URLS = [
   '/',
   '/index.html',
   '/manifest.json',
   '/icon-192.png',
-  '/icon-512.png'
+  '/icon-512.png',
+  '/pwa-screenshot-wide.png',
+  '/pwa-screenshot-narrow.png'
 ];
 
 self.addEventListener('install', event => {
