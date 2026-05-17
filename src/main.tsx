@@ -60,6 +60,34 @@ if (typeof screen !== 'undefined' && screen.orientation && (screen.orientation a
   });
 }
 
+// Prevent pinch-zoom and double-tap zoom on iOS Safari
+document.addEventListener('gesturestart', function(e) {
+  e.preventDefault();
+} as any);
+
+document.addEventListener('gesturechange', function(e) {
+  e.preventDefault();
+} as any);
+
+document.addEventListener('gestureend', function(e) {
+  e.preventDefault();
+} as any);
+
+let lastTouchEnd = 0;
+document.addEventListener('touchend', function(event) {
+  const now = (new Date()).getTime();
+  if (now - lastTouchEnd <= 300) {
+    event.preventDefault();
+  }
+  lastTouchEnd = now;
+}, false);
+
+document.addEventListener('touchmove', function(event) {
+  if (event.touches.length > 1) {
+    event.preventDefault();
+  }
+}, { passive: false });
+
 const rootElement = document.getElementById('root');
 if (rootElement) {
   const root = createRoot(rootElement);
