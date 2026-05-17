@@ -1,4 +1,4 @@
-const CACHE_NAME = "markez-cache-v15";
+const CACHE_NAME = "markez-cache-v16";
 
 // Default PWABuilder Service Worker functionality
 importScripts('https://storage.googleapis.com/workbox-cdn/releases/6.5.4/workbox-sw.js');
@@ -9,6 +9,12 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
+});
+
+// Provide a default fetch handler to ensure Chrome recognizes the SW as offline-capable
+self.addEventListener('fetch', (event) => {
+  // Workbox handles the actual caching strategies. 
+  // This empty listener satisfies the WebAPK requirement reliably.
 });
 
 if (workbox) {

@@ -59,13 +59,5 @@
   "prefer_related_applications": false,
   "launch_handler": {
     "client_mode": "navigate-existing"
-  },
-  "display_override": [
-    "window-controls-overlay",
-    "standalone",
-    "browser"
-  ],
-  "edge_side_panel": {
-    "preferred_width": 400
   }
 }
