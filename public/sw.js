@@ -1,76 +1,57 @@
-const CACHE_NAME = "markez-cache-v16";
-
-// Default PWABuilder Service Worker functionality
-importScripts('https://storage.googleapis.com/workbox-cdn/releases/6.5.4/workbox-sw.js');
+const CACHE_NAME = "markez-cache-v17";
+const OFFLINE_URLS = [
+  '/',
+  '/index.html',
+  '/manifest.json',
+  '/icon-192.png',
+  '/icon-512.png'
+];
 
 self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.addAll(OFFLINE_URLS);
+    })
+  );
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames.map((cacheName) => {
+          if (cacheName !== CACHE_NAME) {
+            return caches.delete(cacheName);
+          }
+        })
+      );
+    })
+  );
+  self.clients.claim();
 });
 
-// Provide a default fetch handler to ensure Chrome recognizes the SW as offline-capable
 self.addEventListener('fetch', (event) => {
-  // Workbox handles the actual caching strategies. 
-  // This empty listener satisfies the WebAPK requirement reliably.
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request).catch(() => {
+        return caches.match('/');
+      })
+    );
+    return;
+  }
+
+  event.respondWith(
+    caches.match(event.request).then((response) => {
+      return response || fetch(event.request).then((fetchRes) => {
+        return caches.open(CACHE_NAME).then((cache) => {
+          // Solamente cacheamos peticiones GET
+          if (event.request.method === 'GET') {
+            cache.put(event.request, fetchRes.clone());
+          }
+          return fetchRes;
+        });
+      });
+    })
+  );
 });
-
-if (workbox) {
-  console.log('Workbox is loaded');
-  
-  // Cache page navigations (html) with a Network First strategy
-  workbox.routing.registerRoute(
-    ({ request }) => request.mode === 'navigate',
-    new workbox.strategies.NetworkFirst({
-      cacheName: 'pages',
-      plugins: [
-        new workbox.cacheableResponse.CacheableResponsePlugin({
-          statuses: [200]
-        })
-      ]
-    })
-  );
-
-  // Cache CSS, JS, and Web Worker requests with a Stale While Revalidate strategy
-  workbox.routing.registerRoute(
-    ({ request }) =>
-      request.destination === 'style' ||
-      request.destination === 'script' ||
-      request.destination === 'worker',
-    new workbox.strategies.StaleWhileRevalidate({
-      cacheName: 'assets',
-      plugins: [
-        new workbox.cacheableResponse.CacheableResponsePlugin({
-          statuses: [200]
-        })
-      ]
-    })
-  );
-
-  // Cache images with a Cache First strategy
-  workbox.routing.registerRoute(
-    ({ request }) => request.destination === 'image',
-    new workbox.strategies.CacheFirst({
-      cacheName: 'images',
-      plugins: [
-        new workbox.cacheableResponse.CacheableResponsePlugin({
-          statuses: [200]
-        }),
-        new workbox.expiration.ExpirationPlugin({
-          maxEntries: 50,
-          maxAgeSeconds: 60 * 60 * 24 * 30 // 30 Days
-        })
-      ]
-    })
-  );
-
-  self.addEventListener('message', (event) => {
-    if (event.data && event.data.type === 'SKIP_WAITING') {
-      self.skipWaiting();
-    }
-  });
-} else {
-  console.log('Workbox could not be loaded. No offline support.');
-}
