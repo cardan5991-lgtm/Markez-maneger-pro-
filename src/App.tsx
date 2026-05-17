@@ -235,8 +235,13 @@ export default function App() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   
   useEffect(() => {
+    // Si ya ocurrió el evento antes de que React se montara
+    if (window.deferredPrompt) {
+      setDeferredPrompt(window.deferredPrompt);
+    }
+
     const handler = (e: any) => {
-      // Stash the event so it can be triggered later.
+      e.preventDefault();
       window.deferredPrompt = e;
       setDeferredPrompt(e);
     };

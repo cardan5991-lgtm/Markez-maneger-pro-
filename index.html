@@ -15,9 +15,28 @@
     <link rel="manifest" href="/manifest.json" />
     <title>Markez Manager Pro</title>
   </head>
-  <body>
+  <body style="touch-action: pan-y; -webkit-touch-callout: none;">
     <div id="root"></div>
     <script>
+      // Bloqueo estricto de pinch zoom a nivel de documento
+      document.addEventListener('touchstart', function(event) {
+        if (event.touches.length > 1) {
+          event.preventDefault();
+        }
+      }, { passive: false });
+
+      document.addEventListener('touchmove', function(event) {
+        if (event.touches.length > 1) {
+          event.preventDefault();
+        }
+      }, { passive: false });
+      
+      window.deferredPrompt = null;
+      window.addEventListener('beforeinstallprompt', function(e) {
+        e.preventDefault();
+        window.deferredPrompt = e;
+      });
+
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', function() {
           navigator.serviceWorker.register('/sw.js', { scope: '/' }).then(function(registration) {
