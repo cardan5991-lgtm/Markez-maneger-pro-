@@ -130,7 +130,7 @@ const StatCard = React.memo(({ title, value, icon: Icon, trend, type = 'neutral'
       <span className="text-gray-400 text-xs font-black uppercase tracking-widest">{title}</span>
       <div className={cn(
         "p-2.5 rounded-xl transition-colors duration-300",
-        type === 'income' ? "bg-emerald-500/10 text-emerald-500 group-hover:bg-emerald-500 group-hover:text-white" : 
+        type === 'income' ? "bg-white/10 text-white group-hover:bg-white group-hover:text-black" : 
         type === 'expense' ? "bg-rose-500/10 text-rose-500 group-hover:bg-rose-500 group-hover:text-white" : 
         "bg-primary/10 text-primary group-hover:bg-primary group-hover:text-white"
       )}>
@@ -144,7 +144,7 @@ const StatCard = React.memo(({ title, value, icon: Icon, trend, type = 'neutral'
       {trend && (
         <div className={cn(
           "text-[10px] font-bold flex items-center gap-1 px-2 py-0.5 rounded-full w-fit",
-          trend > 0 ? "bg-emerald-500/10 text-emerald-500" : "bg-rose-500/10 text-rose-500"
+          trend > 0 ? "bg-white/10 text-white" : "bg-rose-500/10 text-rose-500"
         )}>
           {trend > 0 ? <ArrowUpRight size={10} /> : <ArrowDownRight size={10} />}
           {Math.abs(trend)}% vs mes anterior
@@ -356,7 +356,7 @@ export const DashboardView = React.memo(({
                   paddingAngle={5}
                   dataKey="value"
                 >
-                  <Cell key="income" fill="#10b981" /> {/* Emerald-500 */}
+                  <Cell key="income" fill="#FFFFFF" /> {/* White instead of Green */}
                   <Cell key="expense" fill="#f43f5e" /> {/* Rose-500 */}
                 </Pie>
                 <Tooltip 
@@ -369,7 +369,7 @@ export const DashboardView = React.memo(({
           </div>
           <div className="flex justify-center gap-6 mt-4">
             <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-emerald-500" />
+              <div className="w-3 h-3 rounded-full bg-white" />
               <span className="text-sm text-gray-300">Ingresos: {formatCurrency(financeStats.income)}</span>
             </div>
             <div className="flex items-center gap-2">
@@ -625,7 +625,7 @@ export const FinancesView = React.memo(({
                     contentStyle={{ backgroundColor: '#1E1E1E', border: 'none', borderRadius: '12px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
                     itemStyle={{ color: '#fff' }}
                   />
-                  <Bar dataKey="income" name="Ingresos" fill="#10b981" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="income" name="Ingresos" fill="#FFFFFF" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="expense" name="Gastos" fill="#f43f5e" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -645,7 +645,7 @@ export const FinancesView = React.memo(({
                     contentStyle={{ backgroundColor: '#1E1E1E', border: 'none', borderRadius: '12px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
                     itemStyle={{ color: '#fff' }}
                   />
-                  <Bar dataKey="income" name="Ingresos" fill="#10b981" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="income" name="Ingresos" fill="#FFFFFF" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="expense" name="Gastos" fill="#f43f5e" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -666,7 +666,7 @@ export const FinancesView = React.memo(({
                   <div className="flex items-center gap-4">
                     <div className={cn(
                       "w-10 h-10 rounded-xl flex items-center justify-center",
-                      t.type === 'income' ? "bg-emerald-500/10 text-emerald-500" : "bg-rose-500/10 text-rose-500"
+                      t.type === 'income' ? "bg-white/10 text-white" : "bg-rose-500/10 text-rose-500"
                     )}>
                       {t.type === 'income' ? <ArrowUpRight size={20} /> : <ArrowDownRight size={20} />}
                     </div>
@@ -685,7 +685,7 @@ export const FinancesView = React.memo(({
                   <div className="flex items-center gap-4">
                     <span className={cn(
                       "font-bold font-mono",
-                      t.type === 'income' ? "text-emerald-500" : "text-rose-500",
+                      t.type === 'income' ? "text-white" : "text-rose-500",
                       t.is_canceled && "line-through"
                     )}>
                       {t.type === 'income' ? '+' : '-'}{formatCurrency(t.amount)}
