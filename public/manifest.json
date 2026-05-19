@@ -2,7 +2,7 @@
   "name": "Markez Manager",
   "short_name": "Markez",
   "description": "Panel de control y gestión financiera para tapicería.",
-  "start_url": "/",
+  "start_url": "/markez-maneger-pro.vercel.app/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#0A0A0A",
@@ -36,7 +36,10 @@
       "form_factor": "narrow"
     }
   ],
-  "categories": ["productivity", "business"],
+  "categories": [
+    "productivity",
+    "business"
+  ],
   "shortcuts": [
     {
       "name": "Nuevo Pedido",
@@ -52,5 +55,7 @@
       ]
     }
   ],
-  "prefer_related_applications": false
+  "prefer_related_applications": false,
+  "id": "https://markez-maneger-pro.vercel.app/",
+  "dir": "auto"
 }
