@@ -3,6 +3,6 @@
       "target": {
         "namespace": "android_app",
         "package_name": "app.vercel.markez_maneger_pro.twa",
-        "sha256_cert_fingerprints": ["B6:0A:86:6A:23:AC:9E:A2:56:5A:93:DC:90:DB:B3:38:68:6C:11:26:2B:BB:86:B2:36:5B:DF:CB:BE:56:C7:EA"]
+        "sha256_cert_fingerprints": ["93:71:D5:86:0A:C0:57:A5:C5:74:D3:47:19:4D:49:1A:EE:2F:7D:02:EA:B9:81:A4:F4:78:63:99:0A:D2:3A:60"]
       }
     }]
