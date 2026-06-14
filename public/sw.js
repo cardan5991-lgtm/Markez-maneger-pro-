@@ -1,4 +1,4 @@
-const CACHE_NAME = 'markez-cache-v20';
+const CACHE_NAME = 'markez-cache-v21';
 const PRECACHE_URLS = [
   '/',
   '/index.html',
