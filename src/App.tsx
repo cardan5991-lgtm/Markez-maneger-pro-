@@ -935,23 +935,28 @@ Usuario: ${message}`;
     }
   }, [insights]);
 
-  // Weekly PDF Report Check (Saturdays 3:00 PM)
+  // Weekly PDF Report Check (most recent Saturday 3:00 PM)
   useEffect(() => {
     if (!isLoggedIn || (!validTransactions.length && !orders.length)) return;
 
     const now = new Date();
-    const dayOfWeek = now.getDay(); // 0 = Sun, 1 = Mon, ..., 6 = Sat
     
-    // ONLY activate on Saturdays after 3:00 PM
-    const isCutoffTime = dayOfWeek === 6 && now.getHours() >= 15;
-    
-    if (!isCutoffTime) {
-      if (weeklyReportReady) setWeeklyReportReady(null);
-      return;
-    }
-
+    // Find the most recent Saturday at 15:00
     let lastCutoff = new Date(now);
     lastCutoff.setHours(15, 0, 0, 0);
+
+    let daysToSubtract = 0;
+    if (now.getDay() === 6) {
+      if (now.getHours() < 15) {
+        daysToSubtract = 7;
+      } else {
+        daysToSubtract = 0;
+      }
+    } else {
+      daysToSubtract = now.getDay() + 1;
+    }
+    
+    lastCutoff.setDate(lastCutoff.getDate() - daysToSubtract);
 
     const cutoffKey = `weekly-pdf-${lastCutoff.toISOString()}`;
     const lastDownloaded = localStorage.getItem('lastWeeklyPdfDownloaded');
@@ -988,14 +993,13 @@ Usuario: ${message}`;
         orders: weekOrders,
         cutoffKey
       });
+    } else {
+      if (weeklyReportReady) setWeeklyReportReady(null);
     }
   }, [validTransactions, orders, isLoggedIn, snoozedWeeklyReportKey]);
 
   // --- Handlers ---
-  const handleDownloadWeeklyReport = () => {
-    if (!weeklyReportReady) return;
-    const { startDate, endDate, transactions, orders, cutoffKey } = weeklyReportReady;
-    
+  const generateWeeklyPDF = (startDate: Date, endDate: Date, reportTxs: Transaction[], reportOrders: Order[], cutoffKey?: string) => {
     const doc = new jsPDF();
     
     // Colors
@@ -1021,8 +1025,8 @@ Usuario: ${message}`;
     let currentY = 50;
     
     // Resumen Financiero
-    const income = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + Number(t.amount), 0);
-    const expense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + Number(t.amount), 0);
+    const income = reportTxs.filter(t => t.type === 'income').reduce((sum, t) => sum + Number(t.amount), 0);
+    const expense = reportTxs.filter(t => t.type === 'expense').reduce((sum, t) => sum + Number(t.amount), 0);
     const balance = income - expense;
     
     // Draw 3 boxes for stats
@@ -1123,7 +1127,7 @@ Usuario: ${message}`;
     currentY += chartHeight + 15;
     
     // Transacciones Table
-    if (transactions.length > 0) {
+    if (reportTxs.length > 0) {
       doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
@@ -1132,7 +1136,7 @@ Usuario: ${message}`;
       autoTable(doc, {
         startY: currentY,
         head: [['Fecha', 'Concepto', 'Tipo', 'Monto']],
-        body: transactions.map(t => [
+        body: reportTxs.map(t => [
           format(new Date(t.date), 'dd/MM/yyyy'),
           t.concept,
           t.type === 'income' ? 'Ingreso' : 'Egreso',
@@ -1146,7 +1150,7 @@ Usuario: ${message}`;
     }
     
     // Pedidos Table
-    if (orders.length > 0) {
+    if (reportOrders.length > 0) {
       if (currentY > 250) { doc.addPage(); currentY = 20; }
       doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
       doc.setFontSize(14);
@@ -1156,7 +1160,7 @@ Usuario: ${message}`;
       autoTable(doc, {
         startY: currentY,
         head: [['Cliente', 'Trabajo', 'Estado', 'Total', 'Pagado']],
-        body: orders.map(o => [
+        body: reportOrders.map(o => [
           o.customer_name,
           o.work_type,
           o.status === 'completed' ? 'Completado' : 'Pendiente',
@@ -1184,12 +1188,12 @@ Usuario: ${message}`;
     let py = 50;
     
     // Stats
-    const totalOrders = orders.length;
-    const completedOrders = orders.filter(o => o.status === 'completed').length;
+    const totalOrders = reportOrders.length;
+    const completedOrders = reportOrders.filter(o => o.status === 'completed').length;
     const pendingOrders = totalOrders - completedOrders;
-    const avgTicket = totalOrders > 0 ? (orders.reduce((sum, o) => sum + Number(o.total), 0) / totalOrders) : 0;
+    const avgTicket = totalOrders > 0 ? (reportOrders.reduce((sum, o) => sum + Number(o.total), 0) / totalOrders) : 0;
     
-    const expenseCategories = transactions.filter(t => t.type === 'expense').reduce((acc, t) => {
+    const expenseCategories = reportTxs.filter(t => t.type === 'expense').reduce((acc, t) => {
       acc[t.category] = (acc[t.category] || 0) + Number(t.amount);
       return acc;
     }, {} as Record<string, number>);
@@ -1269,8 +1273,50 @@ Usuario: ${message}`;
 
     doc.save(`Reporte_Semanal_${format(endDate, 'yyyy-MM-dd')}.pdf`);
     
-    // Mark as downloaded
-    localStorage.setItem('lastWeeklyPdfDownloaded', cutoffKey);
+    if (cutoffKey) {
+      // Mark as downloaded
+      localStorage.setItem('lastWeeklyPdfDownloaded', cutoffKey);
+    }
+  };
+
+  const downloadReportForDate = (date: Date) => {
+    let lastCutoff = new Date(date);
+    lastCutoff.setHours(15, 0, 0, 0);
+
+    const startDate = new Date(lastCutoff);
+    startDate.setDate(startDate.getDate() - 7);
+
+    const weekTxs = validTransactions.filter(t => {
+      const d = new Date(t.date);
+      return d > startDate && d <= lastCutoff;
+    });
+
+    const weekOrders = orders.filter(o => {
+      if (o.is_quote || o.is_canceled || o.archived) return false;
+      try {
+        let orderDate: Date;
+        if (typeof o.delivery_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(o.delivery_date)) {
+          const [year, month, d] = o.delivery_date.split('-');
+          orderDate = new Date(Number(year), Number(month) - 1, Number(d));
+        } else {
+          orderDate = new Date(o.delivery_date);
+        }
+        return orderDate > startDate && orderDate <= lastCutoff;
+      } catch (e) {
+        return false;
+      }
+    });
+
+    generateWeeklyPDF(startDate, lastCutoff, weekTxs, weekOrders);
+    setToast({ message: 'Reporte descargado exitosamente', type: 'success' });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const handleDownloadWeeklyReport = () => {
+    if (!weeklyReportReady) return;
+    const { startDate, endDate, transactions, orders, cutoffKey } = weeklyReportReady;
+    
+    generateWeeklyPDF(startDate, endDate, transactions, orders, cutoffKey);
     setWeeklyReportReady(null);
     
     setToast({ message: 'Reporte descargado exitosamente', type: 'success' });
@@ -2494,7 +2540,7 @@ Usuario: ${message}`;
                   />
                 )}
                 {activeTab === 'calendar' && (
-                  <CalendarView orders={orders} />
+                  <CalendarView orders={orders} onDownloadWeeklyReport={downloadReportForDate} />
                 )}
                 {activeTab === 'settings' && (
                   <SettingsView 
@@ -2925,6 +2971,9 @@ Usuario: ${message}`;
                   <button onClick={() => {
                     setSnoozedWeeklyReportKey(weeklyReportReady.cutoffKey);
                     setWeeklyReportReady(null);
+                    setTimeout(() => {
+                      setSnoozedWeeklyReportKey(null);
+                    }, 2 * 60 * 60 * 1000); // 2 hours
                   }} className="w-full py-3 rounded-xl font-bold bg-white/5 hover:bg-white/10 transition-colors">
                     Recordarme más tarde
                   </button>

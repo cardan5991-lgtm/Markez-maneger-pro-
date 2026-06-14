@@ -1408,7 +1408,7 @@ export const SettingsView = React.memo(({
 
 SettingsView.displayName = 'SettingsView';
 
-export const CalendarView = React.memo(({ orders }: { orders: Order[] }) => {
+export const CalendarView = React.memo(({ orders, onDownloadWeeklyReport }: { orders: Order[], onDownloadWeeklyReport?: (date: Date) => void }) => {
   const [currentMonth, setCurrentMonth] = React.useState(new Date());
   const [selectedDate, setSelectedDate] = React.useState<Date | null>(null);
 
@@ -1483,11 +1483,11 @@ export const CalendarView = React.memo(({ orders }: { orders: Order[] }) => {
             return (
               <div
                 key={day.toString()}
-                onClick={() => hasOrders && setSelectedDate(day)}
+                onClick={() => (hasOrders || day.getDay() === 6) && setSelectedDate(day)}
                 className={cn(
                   "min-h-[80px] p-2 rounded-xl border transition-all duration-300 relative",
                   !isCurrentMonth ? "opacity-30 border-transparent bg-white/5" : "border-white/10 bg-[#1A1A1A]",
-                  hasOrders ? "cursor-pointer hover:shadow-lg" : "",
+                  (hasOrders || day.getDay() === 6) ? "cursor-pointer hover:shadow-lg" : "",
                   hasOrders && !allCompleted ? "hover:shadow-rose-500/20" : "",
                   hasOrders && allCompleted ? "hover:shadow-emerald-500/20" : "",
                   hasOrders && isCurrentMonth && !allCompleted ? "border-rose-500/50 bg-rose-500/10" : "",
@@ -1589,6 +1589,17 @@ export const CalendarView = React.memo(({ orders }: { orders: Order[] }) => {
                       </div>
                     </div>
                   ))
+                )}
+                {selectedDate && selectedDate.getDay() === 6 && onDownloadWeeklyReport && (
+                  <div className="pt-4 border-t border-white/10 mt-2">
+                    <button 
+                      onClick={() => onDownloadWeeklyReport(selectedDate)}
+                      className="w-full py-3 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-colors shadow-lg shadow-rose-600/20"
+                    >
+                      <Download size={20} />
+                      Descargar Reporte Semanal
+                    </button>
+                  </div>
                 )}
               </div>
             </motion.div>
