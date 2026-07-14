@@ -3195,9 +3195,19 @@ Usuario: ${message}`;
                             .replace('{restante}', (selectedOrderDetails.total - selectedOrderDetails.advance).toString());
                         }
                         
-                        const url = profile.use_whatsapp_business 
-                          ? `https://wa.me/52${selectedOrderDetails.phone}?text=${encodeURIComponent(text)}`
-                          : `https://api.whatsapp.com/send?phone=52${selectedOrderDetails.phone}&text=${encodeURIComponent(text)}`;
+                        let url = '';
+                        const isAndroid = /Android/i.test(navigator.userAgent);
+                        
+                        if (profile.use_whatsapp_business) {
+                          if (isAndroid) {
+                            url = `intent://send?phone=52${selectedOrderDetails.phone}&text=${encodeURIComponent(text)}#Intent;scheme=whatsapp;package=com.whatsapp.w4b;end`;
+                          } else {
+                            url = `https://wa.me/52${selectedOrderDetails.phone}?text=${encodeURIComponent(text)}`;
+                          }
+                        } else {
+                          url = `https://api.whatsapp.com/send?phone=52${selectedOrderDetails.phone}&text=${encodeURIComponent(text)}`;
+                        }
+                        
                         window.open(url, '_blank');
                       }}
                       className="py-4 bg-[#00D084] text-white rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-[#00B874] transition-colors"
