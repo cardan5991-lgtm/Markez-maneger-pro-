@@ -813,6 +813,37 @@ export const SettingsView = React.memo(({
   setSelectedTheme,
   setPasswordPrompt
 }: any) => {
+  const [isInstallable, setIsInstallable] = React.useState(false);
+
+  React.useEffect(() => {
+    const handleInstallReady = () => {
+      setIsInstallable(true);
+    };
+    
+    if (window.deferredPrompt) {
+      setIsInstallable(true);
+    }
+    
+    window.addEventListener('pwa-install-ready', handleInstallReady);
+    
+    return () => {
+      window.removeEventListener('pwa-install-ready', handleInstallReady);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!window.deferredPrompt) return;
+    
+    window.deferredPrompt.prompt();
+    const { outcome } = await window.deferredPrompt.userChoice;
+    
+    if (outcome === 'accepted') {
+      setIsInstallable(false);
+    }
+    
+    window.deferredPrompt = null;
+  };
+
   return (
     <motion.div 
       key="settings"
@@ -1400,6 +1431,21 @@ export const SettingsView = React.memo(({
             )} />
           </button>
         </div>
+
+        {isInstallable && (
+          <div className="flex items-center justify-between border-t border-white/5 pt-4">
+            <div className="flex flex-col">
+              <span className="text-gray-400">Instalar Aplicación</span>
+              <span className="text-[10px] text-gray-500">Añadir al inicio para mejor experiencia</span>
+            </div>
+            <button 
+              onClick={handleInstallClick}
+              className="px-4 py-2 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary/90 transition-colors"
+            >
+              Instalar
+            </button>
+          </div>
+        )}
       </div>
 
     </motion.div>
