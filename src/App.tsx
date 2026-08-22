@@ -3198,14 +3198,11 @@ Usuario: ${message}`;
                         let url = '';
                         const isAndroid = /Android/i.test(navigator.userAgent);
                         
-                        if (profile.use_whatsapp_business) {
-                          if (isAndroid) {
-                            url = `intent://send?phone=52${selectedOrderDetails.phone}&text=${encodeURIComponent(text)}#Intent;scheme=whatsapp;package=com.whatsapp.w4b;end`;
-                          } else {
-                            url = `https://wa.me/52${selectedOrderDetails.phone}?text=${encodeURIComponent(text)}`;
-                          }
+                        if (isAndroid) {
+                          const packageName = profile.use_whatsapp_business ? 'com.whatsapp.w4b' : 'com.whatsapp';
+                          url = `intent://send?phone=52${selectedOrderDetails.phone}&text=${encodeURIComponent(text)}#Intent;scheme=whatsapp;package=${packageName};end`;
                         } else {
-                          url = `https://api.whatsapp.com/send?phone=52${selectedOrderDetails.phone}&text=${encodeURIComponent(text)}`;
+                          url = `https://wa.me/52${selectedOrderDetails.phone}?text=${encodeURIComponent(text)}`;
                         }
                         
                         window.open(url, '_blank');

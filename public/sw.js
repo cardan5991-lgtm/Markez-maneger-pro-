@@ -1,52 +1,54 @@
-const CACHE_NAME = 'markez-cache-v21';
-const PRECACHE_URLS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/icon-192.png',
-  '/icon-512.png',
-  '/pwa-screenshot-wide.png',
-  '/pwa-screenshot-narrow.png'
-];
+const CACHE_NAME = 'markez-cache-v22';
 
 self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(async cache => {
-        // Precargar uno por uno para que si uno falla, no falle todo
-        for (const url of PRECACHE_URLS) {
-          try {
-            await cache.add(url);
-          } catch (e) {
-            console.error('PWA: Error caching ' + url, e);
-          }
-        }
-      })
-      .then(() => self.skipWaiting())
-  );
+  self.skipWaiting();
 });
 
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(keys =>
       Promise.all(
-        keys.filter(key => key !== CACHE_NAME)
-            .map(key => caches.delete(key))
+        keys.map(key => {
+          if (key !== CACHE_NAME) {
+            return caches.delete(key);
+          }
+        })
       )
     ).then(() => self.clients.claim())
   );
 });
 
 self.addEventListener('fetch', event => {
-  if (event.request.mode === 'navigate') {
-    event.respondWith(
-      caches.match('/index.html')
-        .then(response => response || fetch('/index.html'))
-    );
+  // Only cache GET requests, skip chrome-extension:// and other non-http schemes
+  if (event.request.method !== 'GET' || !event.request.url.startsWith('http')) {
     return;
   }
+
+  // Network First strategy
   event.respondWith(
-    caches.match(event.request)
-      .then(response => response || fetch(event.request))
+    fetch(event.request)
+      .then(response => {
+        // Cache successful GET responses
+        if (response.status === 200) {
+          const responseClone = response.clone();
+          caches.open(CACHE_NAME).then(cache => {
+            cache.put(event.request, responseClone);
+          });
+        }
+        return response;
+      })
+      .catch(() => {
+        // Fallback to cache if network fails (offline)
+        return caches.match(event.request).then(response => {
+          if (response) {
+            return response;
+          }
+          // If offline and requesting a page, return index.html
+          if (event.request.mode === 'navigate') {
+            return caches.match('/index.html');
+          }
+          return null;
+        });
+      })
   );
 });
