@@ -35,6 +35,7 @@
       window.addEventListener('beforeinstallprompt', function(e) {
         e.preventDefault();
         window.deferredPrompt = e;
+        window.dispatchEvent(new Event('pwa-install-ready'));
       });
 
       if ('serviceWorker' in navigator) {
