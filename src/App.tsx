@@ -3185,27 +3185,61 @@ Usuario: ${message}`;
                           text = `Estimado/a ${selectedOrderDetails.customer_name}, le compartimos la cotización solicitada por el trabajo de ${selectedOrderDetails.work_type}. Enseguida le enviaremos el documento PDF.`;
                         } else {
                           text = profile.whatsapp_template
-                            .replace('{empresa}', profile.business_name)
-                            .replace('{cliente}', selectedOrderDetails.customer_name)
-                            .replace('{trabajo}', selectedOrderDetails.work_type)
-                            .replace('{material}', selectedOrderDetails.material)
+                            .replace('{empresa}', profile.business_name || 'Markez Tapicería')
+                            .replace('{cliente}', selectedOrderDetails.customer_name || '')
+                            .replace('{trabajo}', selectedOrderDetails.work_type || '')
+                            .replace('{material}', selectedOrderDetails.material || '')
                             .replace('{entrega}', safeFormatDate(selectedOrderDetails.delivery_date, 'dd/MM/yyyy'))
-                            .replace('{total}', selectedOrderDetails.total.toString())
-                            .replace('{anticipo}', selectedOrderDetails.advance.toString())
-                            .replace('{restante}', (selectedOrderDetails.total - selectedOrderDetails.advance).toString());
+                            .replace('{total}', (selectedOrderDetails.total || 0).toString())
+                            .replace('{anticipo}', (selectedOrderDetails.advance || 0).toString())
+                            .replace('{restante}', ((selectedOrderDetails.total || 0) - (selectedOrderDetails.advance || 0)).toString());
                         }
                         
-                        let url = '';
+                        // Limpiar y formatear número de teléfono
+                        const digits = (selectedOrderDetails.phone || '').replace(/\D/g, '');
+                        let phoneFormatted = digits;
+                        if (digits.length === 10) {
+                          phoneFormatted = '52' + digits;
+                        } else if (digits.length === 11 && digits.startsWith('1')) {
+                          phoneFormatted = '52' + digits.substring(1);
+                        } else if (digits.startsWith('52') && (digits.length === 12 || digits.length === 13)) {
+                          phoneFormatted = digits;
+                        } else if (digits.length > 0 && !digits.startsWith('52')) {
+                          phoneFormatted = '52' + digits;
+                        }
+                        
+                        const encodedText = encodeURIComponent(text);
                         const isAndroid = /Android/i.test(navigator.userAgent);
                         
-                        if (isAndroid) {
-                          const packageName = profile.use_whatsapp_business ? 'com.whatsapp.w4b' : 'com.whatsapp';
-                          url = `intent://send?phone=52${selectedOrderDetails.phone}&text=${encodeURIComponent(text)}#Intent;scheme=whatsapp;package=${packageName};end`;
+                        let targetUrl = '';
+                        let fallbackWebUrl = `https://wa.me/${phoneFormatted}?text=${encodedText}`;
+
+                        if (profile.use_whatsapp_business) {
+                          // Forzar WhatsApp Business
+                          if (isAndroid) {
+                            targetUrl = `intent://send?phone=${phoneFormatted}&text=${encodedText}#Intent;scheme=whatsapp;package=com.whatsapp.w4b;end`;
+                          } else {
+                            targetUrl = fallbackWebUrl;
+                          }
                         } else {
-                          url = `https://wa.me/52${selectedOrderDetails.phone}?text=${encodeURIComponent(text)}`;
+                          // WhatsApp Estándar / Normal
+                          if (isAndroid) {
+                            targetUrl = `whatsapp://send?phone=${phoneFormatted}&text=${encodedText}`;
+                          } else {
+                            targetUrl = fallbackWebUrl;
+                          }
                         }
-                        
-                        window.open(url, '_blank');
+
+                        // Intentar abrir de manera segura sin pestañas en blanco bloqueadas
+                        try {
+                          if (isAndroid) {
+                            window.location.href = targetUrl;
+                          } else {
+                            window.open(targetUrl, '_blank');
+                          }
+                        } catch (e) {
+                          window.open(fallbackWebUrl, '_blank');
+                        }
                       }}
                       className="py-4 bg-[#00D084] text-white rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-[#00B874] transition-colors"
                     >

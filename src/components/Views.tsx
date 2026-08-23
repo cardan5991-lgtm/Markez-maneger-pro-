@@ -33,7 +33,10 @@ import {
   Sparkles,
   Lock,
   Bell,
-  BellRing
+  BellRing,
+  Share2,
+  Info,
+  HelpCircle
 } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { 
@@ -813,9 +816,17 @@ export const SettingsView = React.memo(({
   setSelectedTheme,
   setPasswordPrompt
 }: any) => {
-  const [isInstallable, setIsInstallable] = React.useState(false);
+  const [isInstallable, setIsInstallable] = React.useState(Boolean(window.deferredPrompt));
+  const [isAppInstalled, setIsAppInstalled] = React.useState(false);
+  const [showInstallGuide, setShowInstallGuide] = React.useState(false);
 
   React.useEffect(() => {
+    const checkInstalled = () => {
+      const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
+      setIsAppInstalled(Boolean(isStandalone));
+    };
+    checkInstalled();
+
     const handleInstallReady = () => {
       setIsInstallable(true);
     };
@@ -825,23 +836,37 @@ export const SettingsView = React.memo(({
     }
     
     window.addEventListener('pwa-install-ready', handleInstallReady);
+    window.addEventListener('appinstalled', () => {
+      setIsAppInstalled(true);
+      setIsInstallable(false);
+      setToast({ message: '¡Aplicación instalada con éxito!', type: 'success' });
+      setTimeout(() => setToast(null), 3000);
+    });
     
     return () => {
       window.removeEventListener('pwa-install-ready', handleInstallReady);
     };
-  }, []);
+  }, [setToast]);
 
   const handleInstallClick = async () => {
-    if (!window.deferredPrompt) return;
-    
-    window.deferredPrompt.prompt();
-    const { outcome } = await window.deferredPrompt.userChoice;
-    
-    if (outcome === 'accepted') {
-      setIsInstallable(false);
+    if (window.deferredPrompt) {
+      try {
+        window.deferredPrompt.prompt();
+        const { outcome } = await window.deferredPrompt.userChoice;
+        if (outcome === 'accepted') {
+          setIsInstallable(false);
+          setIsAppInstalled(true);
+          setToast({ message: '¡Aplicación instalada con éxito!', type: 'success' });
+          setTimeout(() => setToast(null), 3000);
+        }
+        window.deferredPrompt = null;
+      } catch (e) {
+        console.warn("Prompt error, showing guide:", e);
+        setShowInstallGuide(true);
+      }
+    } else {
+      setShowInstallGuide(true);
     }
-    
-    window.deferredPrompt = null;
   };
 
   return (
@@ -934,12 +959,12 @@ export const SettingsView = React.memo(({
             if (!auth.currentUser) return;
             try {
               const userDocRef = doc(db, 'users', auth.currentUser.uid);
-              const userDocSnap = await getDoc(userDocRef);
-              await setDoc(userDocRef, { 
-                ...profile, 
-                uid: auth.currentUser.uid,
-                role: userDocSnap.exists() ? (userDocSnap.data().role || 'user') : 'user'
-              }, { merge: true });
+              await updateDoc(userDocRef, {
+                business_name: profile.business_name || 'Markez Tapicería',
+                address: profile.address || '',
+                phone: profile.phone || '',
+                logo_url: profile.logo_url || ''
+              });
               setToast({ message: 'Perfil actualizado correctamente', type: 'success' });
               setTimeout(() => setToast(null), 3000);
             } catch (err: any) {
@@ -1292,12 +1317,9 @@ export const SettingsView = React.memo(({
             if (!auth.currentUser) return;
             try {
               const userDocRef = doc(db, 'users', auth.currentUser.uid);
-              const userDocSnap = await getDoc(userDocRef);
-              await setDoc(userDocRef, { 
-                ...profile, 
-                uid: auth.currentUser.uid,
-                role: userDocSnap.exists() ? (userDocSnap.data().role || 'user') : 'user'
-              }, { merge: true });
+              await updateDoc(userDocRef, { 
+                whatsapp_template: profile.whatsapp_template || ''
+              });
               setToast({ message: 'Plantilla guardada', type: 'success' });
               setTimeout(() => setToast(null), 3000);
             } catch (err: any) {
@@ -1397,56 +1419,151 @@ export const SettingsView = React.memo(({
         
         <div className="flex items-center justify-between border-t border-white/5 pt-4">
           <div className="flex flex-col">
-            <span className="text-gray-400">Usar WhatsApp Business</span>
-            <span className="text-[10px] text-gray-500">Forzar el envío desde la app de negocios</span>
+            <span className="text-gray-400 font-medium">Usar WhatsApp Business</span>
+            <span className="text-[11px] text-gray-500">
+              {profile.use_whatsapp_business 
+                ? "Activado: enviará por WhatsApp Business" 
+                : "Desactivado: enviará por WhatsApp estándar"}
+            </span>
           </div>
           <button 
+            type="button"
             onClick={async () => {
-              const newProfile = {...profile, use_whatsapp_business: !profile.use_whatsapp_business};
+              const nextVal = !Boolean(profile.use_whatsapp_business);
+              const newProfile = { ...profile, use_whatsapp_business: nextVal };
               setProfile(newProfile);
               try {
                 if (!auth.currentUser) return;
                 const userDocRef = doc(db, 'users', auth.currentUser.uid);
-                const userDocSnap = await getDoc(userDocRef);
-                await setDoc(userDocRef, { 
-                  ...newProfile, 
-                  uid: auth.currentUser.uid,
-                  role: userDocSnap.exists() ? (userDocSnap.data().role || 'user') : 'user'
-                }, { merge: true });
-                setToast({ message: 'Preferencia guardada', type: 'success' });
-                setTimeout(() => setToast(null), 2000);
+                await updateDoc(userDocRef, { 
+                  use_whatsapp_business: nextVal
+                });
+                setToast({ 
+                  message: nextVal ? '✓ WhatsApp Business activado' : '✓ WhatsApp estándar activado', 
+                  type: 'success' 
+                });
+                setTimeout(() => setToast(null), 2500);
               } catch (err: any) {
-                setToast({ message: 'Error al guardar preferencia: ' + err.message, type: 'error' });
-                setTimeout(() => setToast(null), 2000);
+                console.error("Error toggling WhatsApp:", err);
+                setToast({ message: 'Error al actualizar preferencia: ' + (err.message || ''), type: 'error' });
+                setTimeout(() => setToast(null), 3000);
               }
             }}
             className={cn(
-              "w-12 h-6 rounded-full transition-colors relative",
-              profile.use_whatsapp_business ? "bg-emerald-500" : "bg-gray-300"
+              "w-12 h-6 rounded-full transition-colors relative focus:outline-none",
+              profile.use_whatsapp_business ? "bg-emerald-500" : "bg-gray-600"
             )}
           >
             <div className={cn(
-              "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
+              "absolute top-1 w-4 h-4 bg-white rounded-full transition-all shadow-sm",
               profile.use_whatsapp_business ? "left-7" : "left-1"
             )} />
           </button>
         </div>
+      </div>
 
-        {isInstallable && (
-          <div className="flex items-center justify-between border-t border-white/5 pt-4">
-            <div className="flex flex-col">
-              <span className="text-gray-400">Instalar Aplicación</span>
-              <span className="text-[10px] text-gray-500">Añadir al inicio para mejor experiencia</span>
+      <div className="card space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-primary/10 text-primary">
+              <Smartphone size={22} />
             </div>
-            <button 
-              onClick={handleInstallClick}
-              className="px-4 py-2 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary/90 transition-colors"
+            <div>
+              <h3 className="text-base font-bold text-white">Instalar Aplicación Web (PWA)</h3>
+              <p className="text-xs text-gray-400">
+                {isAppInstalled 
+                  ? "La aplicación ya está instalada en tu dispositivo" 
+                  : "Instala la app para usarla en pantalla completa y acceder más rápido"}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="pt-2 flex flex-col sm:flex-row gap-2">
+          <button 
+            type="button"
+            onClick={handleInstallClick}
+            className="btn-primary w-full flex items-center justify-center gap-2 py-3 text-sm font-bold shadow-lg shadow-primary/20"
+          >
+            <Download size={18} />
+            {isAppInstalled ? "Ver Guía de Instalación" : (isInstallable ? "Instalar Aplicación Ahora" : "Cómo Instalar la App")}
+          </button>
+        </div>
+      </div>
+
+      {/* Modal Guía de Instalación PWA */}
+      <AnimatePresence>
+        {showInstallGuide && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-[#181818] border border-white/10 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-5"
             >
-              Instalar
-            </button>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-primary font-bold text-lg">
+                  <Smartphone size={22} />
+                  <span>Instalar Markez Manager</span>
+                </div>
+                <button 
+                  onClick={() => setShowInstallGuide(false)}
+                  className="p-1 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <p className="text-sm text-gray-300">
+                Puedes instalar esta aplicación directamente en tu celular o computadora sin necesidad de tiendas de apps:
+              </p>
+
+              <div className="space-y-3 text-xs text-gray-300">
+                <div className="p-3 bg-white/5 rounded-xl border border-white/5 space-y-1">
+                  <span className="font-bold text-white flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                    En Android (Google Chrome):
+                  </span>
+                  <p className="text-gray-400 pl-4">
+                    1. Toca los tres puntos (<strong className="text-white">⋮</strong>) arriba a la derecha en Chrome.<br />
+                    2. Selecciona <strong className="text-white">"Instalar aplicación"</strong> o <strong className="text-white">"Añadir a la pantalla de inicio"</strong>.<br />
+                    3. Confirma la instalación.
+                  </p>
+                </div>
+
+                <div className="p-3 bg-white/5 rounded-xl border border-white/5 space-y-1">
+                  <span className="font-bold text-white flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                    En iPhone / iPad (Safari):
+                  </span>
+                  <p className="text-gray-400 pl-4">
+                    1. Toca el botón <strong className="text-white">Compartir</strong> (<Share2 size={12} className="inline mx-1" /> icono con flecha hacia arriba).<br />
+                    2. Desliza hacia abajo y pulsa <strong className="text-white">"Añadir a pantalla de inicio"</strong> (+).<br />
+                    3. Pulsa <strong className="text-white">"Añadir"</strong>.
+                  </p>
+                </div>
+
+                <div className="p-3 bg-white/5 rounded-xl border border-white/5 space-y-1">
+                  <span className="font-bold text-white flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-orange-500"></span>
+                    En Computadora (Chrome / Edge):
+                  </span>
+                  <p className="text-gray-400 pl-4">
+                    Haz clic en el icono de <strong className="text-white">Instalar (⊕)</strong> en el extremo derecho de la barra de direcciones.
+                  </p>
+                </div>
+              </div>
+
+              <button 
+                onClick={() => setShowInstallGuide(false)}
+                className="btn-primary w-full py-3 text-sm font-bold"
+              >
+                Entendido
+              </button>
+            </motion.div>
           </div>
         )}
-      </div>
+      </AnimatePresence>
 
     </motion.div>
   );
