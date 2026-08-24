@@ -1,7 +1,18 @@
-const CACHE_NAME = 'markez-cache-v23';
+const CACHE_NAME = 'markez-cache-v29';
+const PRECACHE_URLS = [
+  '/',
+  '/index.html',
+  '/app.webmanifest',
+  '/markez-192.png',
+  '/markez-512.png'
+];
 
 self.addEventListener('install', event => {
-  self.skipWaiting();
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then(cache => cache.addAll(PRECACHE_URLS))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener('activate', event => {
@@ -19,16 +30,13 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
-  // Only cache GET requests, skip chrome-extension:// and other non-http schemes
   if (event.request.method !== 'GET' || !event.request.url.startsWith('http')) {
     return;
   }
-
-  // Network First strategy
+  
   event.respondWith(
     fetch(event.request)
       .then(response => {
-        // Cache successful GET responses
         if (response.status === 200) {
           const responseClone = response.clone();
           caches.open(CACHE_NAME).then(cache => {
@@ -38,14 +46,12 @@ self.addEventListener('fetch', event => {
         return response;
       })
       .catch(() => {
-        // Fallback to cache if network fails (offline)
-        return caches.match(event.request).then(response => {
+        return caches.match(event.request, { ignoreSearch: true }).then(response => {
           if (response) {
             return response;
           }
-          // If offline and requesting a page, return index.html
           if (event.request.mode === 'navigate') {
-            return caches.match('/index.html');
+            return caches.match('/', { ignoreSearch: true });
           }
           return null;
         });
