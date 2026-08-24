@@ -12,7 +12,7 @@
     <meta name="format-detection" content="telephone=no" />
     <link rel="icon" type="image/png" sizes="192x192" href="/markez-192.png" />
     <link rel="apple-touch-icon" href="/markez-512.png" />
-    <link rel="manifest" href="/app.webmanifest?v=31" />
+    <!-- VitePWA automatically injects the manifest link, but we can also leave it if desired. The plugin docs recommend letting the plugin inject it, but we can safely omit the manual one. Actually, wait. The plugin docs say: "When you run vite build, it will generate the service worker file and the Web App Manifest file... and it will inject the manifest link and the service worker registration in the index.html." So we remove the manual one. -->
     <title>Markez Manager Pro</title>
   </head>
   <body style="touch-action: pan-y; -webkit-touch-callout: none;">
@@ -24,7 +24,6 @@
           event.preventDefault();
         }
       }, { passive: false });
-
       document.addEventListener('touchmove', function(event) {
         if (event.touches.length > 1) {
           event.preventDefault();
@@ -37,20 +36,7 @@
         window.deferredPrompt = e;
         window.dispatchEvent(new Event('pwa-install-ready'));
       });
-
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js', { scope: '/' })
-            .then(registration => {
-              console.log('ServiceWorker registrado:', registration.scope);
-            })
-            .catch(error => {
-              console.error('Error al registrar ServiceWorker:', error);
-            });
-        });
-      }
     </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-
