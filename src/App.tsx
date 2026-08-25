@@ -50,6 +50,7 @@ import {
   CalendarView
 } from './components/Views';
 import { PostCreatorModal } from './PostCreatorModal';
+import { InstallBanner } from './components/InstallBanner';
 
 // --- Types ---
 type Tab = 'dashboard' | 'orders' | 'finances' | 'settings' | 'calendar';
@@ -3570,6 +3571,7 @@ Usuario: ${message}`;
           </motion.div>
         )}
       </AnimatePresence>
+      <InstallBanner />
     </div>
   );
 }
