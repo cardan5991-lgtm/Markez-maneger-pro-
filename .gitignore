@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+public/markez-192.png
+public/markez-512.png
+public/favicon.ico
