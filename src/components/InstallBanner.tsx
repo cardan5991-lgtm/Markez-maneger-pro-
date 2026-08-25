@@ -65,39 +65,47 @@ export function InstallBanner() {
   return (
     <AnimatePresence>
       {showBanner && (
-        <motion.div
-          initial={{ opacity: 0, y: 100 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 100 }}
-          transition={{ type: 'spring', damping: 20, stiffness: 100 }}
-          className="fixed bottom-[85px] left-4 right-4 z-40 bg-[#2a2a2a] border border-[#ff4b4b]/30 rounded-2xl shadow-2xl p-4 flex items-center justify-between gap-4"
-        >
-          <div className="flex items-center gap-3 flex-1">
-            <div className="bg-[#ff4b4b]/20 p-2 rounded-xl text-[#ff4b4b]">
-              <Download size={24} />
-            </div>
-            <div>
-              <h4 className="text-white font-bold text-sm">Instalar Markez Pro</h4>
-              <p className="text-gray-400 text-xs mt-0.5">Accede más rápido y recibe notificaciones.</p>
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleInstallClick}
-              className="bg-[#ff4b4b] hover:bg-[#e63e3e] text-white text-xs font-bold px-4 py-2 rounded-xl transition-colors whitespace-nowrap shadow-lg shadow-[#ff4b4b]/20"
-            >
-              Instalar
-            </button>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            className="bg-[#1A1A1A] w-full max-w-sm border border-[#ff4b4b]/30 rounded-3xl shadow-2xl p-6 flex flex-col items-center text-center relative"
+          >
             <button
               onClick={handleDismiss}
-              className="p-2 text-gray-400 hover:text-white rounded-xl hover:bg-white/10 transition-colors"
-              aria-label="Dismiss"
+              className="absolute top-4 right-4 p-2 text-gray-400 hover:text-white rounded-full hover:bg-white/10 transition-colors"
+              aria-label="Cerrar"
             >
-              <X size={18} />
+              <X size={20} />
             </button>
-          </div>
-        </motion.div>
+
+            <div className="bg-[#ff4b4b]/20 p-4 rounded-2xl text-[#ff4b4b] mb-4 mt-2">
+              <Download size={36} />
+            </div>
+            
+            <h4 className="text-white font-bold text-2xl mb-2">Instalar App</h4>
+            <p className="text-gray-400 text-sm mb-8 leading-relaxed">
+              Instala Markez Manager Pro en tu dispositivo para tener acceso directo, usarla en pantalla completa y trabajar sin distracciones.
+            </p>
+            
+            <div className="flex flex-col w-full gap-3">
+              <button
+                onClick={handleInstallClick}
+                className="w-full bg-[#ff4b4b] hover:bg-[#e63e3e] text-white font-bold text-lg py-4 px-4 rounded-xl transition-all shadow-lg shadow-[#ff4b4b]/20"
+              >
+                Instalar Ahora
+              </button>
+              <button
+                onClick={handleDismiss}
+                className="w-full py-3 px-4 text-gray-400 hover:text-white font-bold rounded-xl hover:bg-white/5 transition-all"
+              >
+                Quizás más tarde
+              </button>
+            </div>
+          </motion.div>
+        </div>
       )}
     </AnimatePresence>
   );
